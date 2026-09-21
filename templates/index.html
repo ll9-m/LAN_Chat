@@ -417,6 +417,7 @@
                                 </div>
                                 <div class="admin-section">
                                     <button id="clear-history-btn" style="background:#f56c6c;">清空聊天记录</button>
+                                    <button id="factory-reset-btn" style="background:#f56c6c; margin-left:6px;">恢复出厂设置</button>
                                 </div>
                             </div>
                             <div id="admin-tab-content-users" class="admin-tab-content" style="display:none;">
@@ -651,6 +652,11 @@
                     // 聊天记录被管理员清空
                     messagesDiv.innerHTML = '';
                     alert('聊天记录已被管理员清空');
+                } else if (data.type === 'factory_reset') {
+                    // 房间被恢复出厂设置
+                    messagesDiv.innerHTML = '';
+                    document.getElementById('room-title').textContent = '在线匿名聊天室';
+                    alert('房间已被管理员恢复出厂设置');
                 } else if (data.type === 'max_history') {
                     // 消息保留条数被修改
                     alert(`消息保留条数已改为 ${data.max_history}`);
@@ -936,6 +942,7 @@
             document.getElementById('set-file-limit-btn').addEventListener('click', setFileLimit);
             document.getElementById('set-max-history-btn').addEventListener('click', setMaxHistory);
             document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
+            document.getElementById('factory-reset-btn').addEventListener('click', factoryReset);
             document.getElementById('set-recall-time-btn').addEventListener('click', setRecallTimeLimit);
             document.getElementById('load-stats-btn').addEventListener('click', loadStats);
             document.getElementById('load-audit-btn').addEventListener('click', loadAuditLog);
@@ -1006,7 +1013,21 @@
             }).then(res => res.json()).then(d => {
                 if (d.success) {
                     alert('聊天记录已清空');
-                    // 清空页面上的消息
+                    messagesDiv.innerHTML = '';
+                } else alert(d.error);
+            });
+        }
+
+        function factoryReset() {
+            if (!confirm('确定要恢复出厂设置吗？\n\n将清空：聊天记录、用户档案、黑名单、上传文件\n房间设置将恢复默认\n\n此操作不可恢复！')) return;
+            if (!confirm('再次确认：真的要恢复出厂设置吗？')) return;
+            fetch('/api/admin/factory_reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId })
+            }).then(res => res.json()).then(d => {
+                if (d.success) {
+                    alert('房间已恢复出厂设置');
                     messagesDiv.innerHTML = '';
                 } else alert(d.error);
             });

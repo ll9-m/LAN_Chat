@@ -408,6 +408,22 @@ class Database:
         with self._lock, self._conn:
             self._conn.execute('DELETE FROM messages')
 
+    def factory_reset(self):
+        """恢复出厂：清空消息、档案、黑名单，重置房间设置"""
+        with self._lock, self._conn:
+            self._conn.execute('DELETE FROM messages')
+            self._conn.execute('DELETE FROM profiles')
+            self._conn.execute('DELETE FROM blacklist')
+            self._conn.execute("REPLACE INTO room_state(key, value) VALUES "
+                               "('room_name','在线匿名聊天室'),('open','1'),('password',''),"
+                               "('file_limit_mb','0'),('max_history','200'),('recall_time_limit','0')")
+        # 清空 uploads 目录中的文件
+        if os.path.isdir(UPLOAD_FOLDER):
+            for f in os.listdir(UPLOAD_FOLDER):
+                fp = os.path.join(UPLOAD_FOLDER, f)
+                if os.path.isfile(fp):
+                    os.remove(fp)
+
     def delete_message(self, message_id):
         """删除单条消息（管理员用）"""
         with self._lock, self._conn:
@@ -907,6 +923,22 @@ class ChatRoom:
         self.broadcaster.broadcast({'type': 'history_cleared'})
         return {'success': True}, 200
 
+    def factory_reset(self, admin_id):
+        """恢复出厂设置：清空所有数据，重置房间为初始状态"""
+        if not self.is_admin(admin_id):
+            return {'error': '无权限'}, 403
+        self.db.factory_reset()
+        # 重置内存中的房间状态
+        self.room_name = '在线匿名聊天室'
+        self.room_password = ''
+        self.room_open = True
+        self.file_limit_mb = 0
+        self.max_history = 200
+        self.recall_time_limit = 0
+        self._save_state()
+        self.broadcaster.broadcast({'type': 'factory_reset'})
+        return {'success': True}, 200
+
     def admin_delete_message(self, admin_id, message_id):
         """管理员删除单条消息（不限时间）"""
         if not self.is_admin(admin_id):
@@ -1139,6 +1171,13 @@ def api_admin_set_max_history():
 def api_admin_clear_history():
     data = request.get_json(silent=True) or {}
     result, status = room.clear_history(data.get('user_id'))
+    return jsonify(result), status
+
+
+@app.route('/api/admin/factory_reset', methods=['POST'])
+def api_admin_factory_reset():
+    data = request.get_json(silent=True) or {}
+    result, status = room.factory_reset(data.get('user_id'))
     return jsonify(result), status
 
 
