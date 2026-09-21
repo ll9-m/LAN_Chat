@@ -284,6 +284,14 @@ class Database:
         self._execute('UPDATE profiles SET muted_until = ? WHERE device_id = ?',
                       (muted_until, device_id))
 
+    def get_muted_users(self):
+        """查询所有当前被禁言的用户（muted_until > now）"""
+        now = time.time()
+        rows = self._query(
+            'SELECT device_id, nickname, avatar, color, muted_until '
+            'FROM profiles WHERE muted_until > ?', (now,))
+        return [dict(r) for r in rows]
+
     # ---------- 消息历史 ----------
     def add_message(self, msg):
         """写入一条消息，并把历史裁剪到最近 max_history 条"""
@@ -534,8 +542,11 @@ class ChatRoom:
                 for uid in [u for u, i in self.online_users.items() if i['is_admin']]:
                     del self.online_users[uid]
                 user_id = 'admin_' + os.urandom(4).hex()
+                # 管理员使用独立 device_id 避免与同浏览器普通用户共享档案
+                # 导致禁言/踢出操作互相影响（profiles/blacklist 表以 device_id 为键）
+                admin_device_id = 'admin_' + device_id
                 self.online_users[user_id] = {
-                    'nickname': 'admin', 'device_id': device_id, 'ip': ip,
+                    'nickname': 'admin', 'device_id': admin_device_id, 'ip': ip,
                     'is_admin': True, 'muted_until': 0,
                     'avatar': random.choice(AVATARS), 
                     'color': random.choice(COLORS),
@@ -724,6 +735,48 @@ class ChatRoom:
         self.broadcaster.broadcast({'type': 'user_muted', 'user_id': target_id,
                                     'duration': duration})
         return {'success': True}, 200
+
+    def unmute_user(self, admin_id, target_id):
+        """解除禁言：将目标用户的禁言截止时间重置为 0"""
+        if not self.is_admin(admin_id):
+            return {'error': '无权限'}, 403
+        with self.lock:
+            target = self.online_users.get(target_id)
+            if target is None:
+                return {'error': '用户不存在'}, 404
+            if target['is_admin']:
+                return {'error': '不能对管理员操作'}, 403
+            device_id = target['device_id']
+            target['muted_until'] = 0
+        self.db.set_muted_until(device_id, 0)
+        self.broadcaster.broadcast({'type': 'user_unmuted', 'user_id': target_id})
+        return {'success': True}, 200
+
+    def get_muted_users(self, admin_id):
+        """获取当前所有被禁言的用户列表"""
+        if not self.is_admin(admin_id):
+            return {'error': '无权限'}, 403
+        muted = self.db.get_muted_users()
+        now = time.time()
+        # 补充在线状态：若用户仍在线则附带 user_id，否则标记为离线
+        with self.lock:
+            online_by_device = {}
+            for uid, u in self.online_users.items():
+                online_by_device[u['device_id']] = uid
+            result = []
+            for m in muted:
+                did = m['device_id']
+                result.append({
+                    'device_id': did,
+                    'nickname': m['nickname'],
+                    'avatar': m['avatar'],
+                    'color': m['color'],
+                    'muted_until': m['muted_until'],
+                    'remaining': max(0, int(m['muted_until'] - now)),
+                    'online': did in online_by_device,
+                    'user_id': online_by_device.get(did),
+                })
+        return {'users': result}, 200
 
     def kick_user(self, admin_id, target_id):
         """踢出并把对方设备加入黑名单（此后换 IP 也无法再进入）"""
@@ -1050,6 +1103,19 @@ def api_admin_mute_user():
 def api_admin_kick_user():
     data = request.get_json(silent=True) or {}
     result, status = room.kick_user(data.get('admin_id'), data.get('target_id'))
+    return jsonify(result), status
+
+
+@app.route('/api/admin/unmute_user', methods=['POST'])
+def api_admin_unmute_user():
+    data = request.get_json(silent=True) or {}
+    result, status = room.unmute_user(data.get('admin_id'), data.get('target_id'))
+    return jsonify(result), status
+
+
+@app.route('/api/admin/muted_users', methods=['GET'])
+def api_admin_muted_users():
+    result, status = room.get_muted_users(request.args.get('user_id'))
     return jsonify(result), status
 
 

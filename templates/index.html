@@ -271,6 +271,11 @@
             <div id="admin-user-list"></div>
         </div>
         <div class="admin-section">
+            <h4>禁言名单</h4>
+            <button id="load-muted-btn" style="margin-bottom:8px;">刷新禁言列表</button>
+            <div id="muted-list-container"></div>
+        </div>
+        <div class="admin-section">
             <h4>黑名单</h4>
             <div id="blacklist-container"></div>
         </div>
@@ -403,6 +408,8 @@
                     }
                 } else if (data.type === 'user_muted') {
                     if (data.user_id === userId) alert(`您已被禁言 ${data.duration} 秒`);
+                } else if (data.type === 'user_unmuted') {
+                    if (data.user_id === userId) alert('您已被管理员解除禁言');
                 } else if (data.type === 'file_limit') {
                     // 管理员调整了单文件大小上限，实时生效
                     fileLimitMb = data.limit_mb || 0;
@@ -643,6 +650,8 @@
             document.getElementById('set-recall-time-btn').addEventListener('click', setRecallTimeLimit);
             document.getElementById('load-stats-btn').addEventListener('click', loadStats);
             document.getElementById('load-audit-btn').addEventListener('click', loadAuditLog);
+            document.getElementById('load-muted-btn').addEventListener('click', loadMutedUsers);
+            loadMutedUsers();  // 打开面板时自动加载禁言列表
         }
 
         // 打开管理面板时回填当前单文件限额
@@ -789,13 +798,15 @@
                 list.innerHTML = data.users.map(u => {
                     // 管理员不显示禁言和踢出按钮
                     const isAdminUser = u.is_admin;
+                    const muteIndicator = (!isAdminUser && u.muted_remaining > 0) 
+                        ? `<span style="font-size:0.75rem;color:#e67e22;"> [禁言${u.muted_remaining}秒]</span>` : '';
                     const buttons = isAdminUser ? '' : `
                         <button class="mute-btn" data-id="${u.user_id}">禁言</button>
                         <button class="kick-btn" data-id="${u.user_id}">踢出</button>
                     `;
                     return `
                         <div class="admin-user-item">
-                            <span>${u.avatar} ${escapeHtml(u.nickname)}${u.is_admin ? ' (admin)' : ''}</span>
+                            <span>${u.avatar} ${escapeHtml(u.nickname)}${u.is_admin ? ' (admin)' : ''}${muteIndicator}</span>
                             <span style="font-size:0.8rem;">${u.ip}</span>
                             <div>${buttons}</div>
                         </div>
@@ -845,6 +856,74 @@
                         body: JSON.stringify({ user_id: userId, device_id: blockedDeviceId })
                     }).then(() => loadBlacklist());
                 };
+            });
+        }
+
+        // 禁言名单相关
+        let mutedCountdownTimer = null;
+
+        function loadMutedUsers() {
+            fetch('/api/admin/muted_users?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
+                const container = document.getElementById('muted-list-container');
+                const users = data.users || [];
+                if (users.length === 0) {
+                    container.innerHTML = '<p style="color:#999;font-size:0.85rem;">当前没有被禁言的用户</p>';
+                    if (mutedCountdownTimer) { clearInterval(mutedCountdownTimer); mutedCountdownTimer = null; }
+                    return;
+                }
+                container.innerHTML = users.map(u => {
+                    const statusText = u.online ? `${u.nickname}` : `${u.nickname} (离线)`;
+                    return `
+                        <div class="admin-user-item">
+                            <span>${u.avatar || '😀'} ${escapeHtml(statusText)}</span>
+                            <span class="muted-countdown" data-until="${u.muted_until}" style="font-size:0.8rem;color:#e67e22;margin:0 6px;">
+                                剩余 ${u.remaining}秒
+                            </span>
+                            <button class="unmute-btn" data-uid="${u.user_id || ''}" data-did="${u.device_id}" style="padding:3px 8px;background:#2ecc71;color:white;border:none;border-radius:3px;cursor:pointer;font-size:0.8rem;">解禁</button>
+                        </div>
+                    `;
+                }).join('');
+
+                // 绑定解禁按钮
+                container.querySelectorAll('.unmute-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const targetUid = btn.dataset.uid;
+                        const targetDid = btn.dataset.did;
+                        if (!targetUid) { alert('该用户已离线，无法在线解除禁言（禁言将在到期后自动清除）'); return; }
+                        fetch('/api/admin/unmute_user', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ admin_id: userId, target_id: targetUid })
+                        }).then(res => res.json()).then(d => {
+                            if (d.success) {
+                                loadMutedUsers();
+                                loadAdminUsers();
+                            } else {
+                                alert(d.error);
+                            }
+                        });
+                    });
+                });
+
+                // 启动倒计时刷新
+                if (mutedCountdownTimer) clearInterval(mutedCountdownTimer);
+                mutedCountdownTimer = setInterval(() => {
+                    let anyRemaining = false;
+                    container.querySelectorAll('.muted-countdown').forEach(el => {
+                        const until = parseFloat(el.dataset.until);
+                        const remaining = Math.max(0, Math.ceil(until - Date.now() / 1000));
+                        if (remaining > 0) {
+                            el.textContent = `剩余 ${remaining}秒`;
+                            anyRemaining = true;
+                        } else {
+                            el.textContent = '已到期';
+                            el.style.color = '#999';
+                        }
+                    });
+                    if (!anyRemaining) {
+                        loadMutedUsers();  // 全部到期，刷新列表
+                    }
+                }, 1000);
             });
         }
 
