@@ -210,16 +210,8 @@
         #image-btn:hover, #file-btn:hover { background: #f0f0f0; }
 
         /* ===== 管理/更多面板通用 ===== */
-        #admin-panel, #more-panel {
-            display: none;
-            position: fixed; top: 56px; right: 16px;
-            width: 360px; max-height: calc(100vh - 72px);
+        #more-panel {
             overflow-y: auto;
-            background: #fff; padding: 18px;
-            border-radius: 10px;
-            box-shadow: 0 6px 30px rgba(0,0,0,0.15);
-            z-index: 500;
-            animation: panelIn .2s ease;
         }
         @keyframes panelIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
@@ -282,16 +274,41 @@
 
         /* ===== 滚动条美化 ===== */
         .messages::-webkit-scrollbar,
-        #admin-panel::-webkit-scrollbar,
-        #more-panel::-webkit-scrollbar { width: 5px; }
+        #admin-panel-content::-webkit-scrollbar,
+        #more-panel-content::-webkit-scrollbar { width: 5px; }
         .messages::-webkit-scrollbar-thumb,
-        #admin-panel::-webkit-scrollbar-thumb,
-        #more-panel::-webkit-scrollbar-thumb {
+        #admin-panel-content::-webkit-scrollbar-thumb,
+        #more-panel-content::-webkit-scrollbar-thumb {
             background: #ccc; border-radius: 3px;
         }
         .messages::-webkit-scrollbar-track,
-        #admin-panel::-webkit-scrollbar-track,
-        #more-panel::-webkit-scrollbar-track { background: transparent; }
+        #admin-panel-content::-webkit-scrollbar-track,
+        #more-panel-content::-webkit-scrollbar-track { background: transparent; }
+
+        /* ===== 面板拖拽/缩放 ===== */
+        .panel-drag-handle {
+            cursor: move;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .panel-drag-handle:active { cursor: grabbing; }
+        .panel-resize-handle {
+            position: absolute;
+            right: 0; bottom: 0;
+            width: 18px; height: 18px;
+            cursor: nwse-resize;
+            z-index: 10;
+        }
+        .panel-resize-handle::after {
+            content: '';
+            position: absolute;
+            right: 4px; bottom: 4px;
+            width: 10px; height: 10px;
+            border-right: 2px solid #ccc;
+            border-bottom: 2px solid #ccc;
+            border-radius: 0 0 3px 0;
+        }
+        .panel-resize-handle:hover::after { border-color: #12b7f5; }
     </style>
 </head>
 
@@ -337,100 +354,111 @@
         </div>
     </div>
 
-    <div id="more-panel" style="display:none; position:fixed; top:56px; right:16px; width:400px; max-height:calc(100vh - 72px);
-            overflow-y:auto; background:white; padding:18px; border-radius:10px;
-            box-shadow:0 6px 30px rgba(0,0,0,0.15); z-index:500;
-            animation: panelIn .2s ease;">
-        <span id="close-more-panel" style="float:right;cursor:pointer;font-size:1.1rem;color:#999;
-            width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;">&times;</span>
-        <h3 style="font-size:1rem;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f0f0f0;">更多</h3>
-        <div style="display:flex; gap:8px; margin:12px 0; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
-            <button id="tab-chat-history" class="more-tab active" style="flex:1;padding:7px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天记录</button>
-            <button id="tab-chat-files" class="more-tab" style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天文件</button>
+    <div id="more-panel" style="display:none; position:fixed; top:56px; right:16px; width:400px; height:500px;
+            background:white; border-radius:10px; overflow:visible;
+            box-shadow:0 6px 30px rgba(0,0,0,0.15); z-index:500;">
+        <div class="panel-drag-handle" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px 10px;border-bottom:1px solid #f0f0f0;">
+            <h3 style="font-size:1rem;font-weight:600;margin:0;padding:0;border:none;">更多</h3>
+            <span id="close-more-panel" style="cursor:pointer;font-size:1.1rem;color:#999;
+                width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;">&times;</span>
         </div>
-        <div id="more-tab-chat-history" class="more-tab-content">
-            <div style="margin-bottom:10px;">
-                <input type="text" id="history-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                <button id="history-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+        <div id="more-panel-content" style="padding:0 18px 14px; overflow-y:auto; height:calc(100% - 52px);">
+            <div style="display:flex; gap:8px; margin:10px 0; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
+                <button id="tab-chat-history" class="more-tab active" style="flex:1;padding:7px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天记录</button>
+                <button id="tab-chat-files" class="more-tab" style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天文件</button>
             </div>
-            <div id="history-results" style="max-height:50vh;overflow-y:auto;"></div>
-        </div>
-        <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
-            <div style="margin-bottom:10px;">
-                <input type="text" id="files-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                <button id="files-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+            <div id="more-tab-chat-history" class="more-tab-content">
+                <div style="margin-bottom:10px;">
+                    <input type="text" id="history-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                    <button id="history-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                </div>
+                <div id="history-results"></div>
             </div>
-            <div id="files-results" style="max-height:50vh;overflow-y:auto;"></div>
+            <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
+                <div style="margin-bottom:10px;">
+                    <input type="text" id="files-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                    <button id="files-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                </div>
+                <div id="files-results"></div>
+            </div>
         </div>
+        <div class="panel-resize-handle" data-panel="more-panel"></div>
     </div>
 
     {% if is_admin %}
-    <div id="admin-panel">
-        <span id="close-admin-panel" style="float:right;cursor:pointer;font-size:1.1rem;color:#999;
-            width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;">&times;</span>
-        <h3 style="font-size:1rem;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f0f0f0;">管理面板</h3>
-        <div class="admin-section">
-            <h4>房间设置</h4>
-            <input type="text" id="room-name-input" placeholder="房间名称" value="{{ room_name }}">
-            <button id="save-room-name">保存名称</button>
-            <hr>
-            <input type="text" id="password-input-admin" placeholder="设置新密码（留空清除）">
-            <button id="set-password-btn">设置密码</button>
-            <button id="clear-password-btn">清除密码</button>
-            <hr>
-            <span id="room-status-text"></span>
-            <hr>
-            <input type="number" id="file-limit-input" min="0" step="1" placeholder="单文件大小上限 MB（0 = 不限）">
-            <button id="set-file-limit-btn">保存限额</button>
-            <hr>
-            <input type="number" id="max-history-input" min="10" step="10" placeholder="保留消息条数（默认200）">
-            <button id="set-max-history-btn">保存条数</button>
-            <hr>
-            <input type="number" id="recall-time-input" min="0" step="30" placeholder="撤回时限秒数（0=不允许撤回）">
-            <button id="set-recall-time-btn">保存时限</button>
-            <hr>
-            <button id="toggle-room-btn">关闭/开启房间</button>
-            <button id="clear-history-btn" style="background:#f56c6c;">清空记录</button>
+    <div id="admin-panel" style="display:none; position:fixed; top:56px; right:16px; width:360px; height:550px;
+            background:white; border-radius:10px; overflow:visible;
+            box-shadow:0 6px 30px rgba(0,0,0,0.15); z-index:500;">
+        <div class="panel-drag-handle" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px 10px;border-bottom:1px solid #f0f0f0;">
+            <h3 style="font-size:1rem;font-weight:600;margin:0;padding:0;border:none;">管理面板</h3>
+            <span id="close-admin-panel" style="cursor:pointer;font-size:1.1rem;color:#999;
+                width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;">&times;</span>
         </div>
-        <div class="admin-section">
-            <h4>在线用户</h4>
-            <div id="admin-user-list"></div>
-        </div>
-        <div class="admin-section">
-            <h4>禁言名单</h4>
-            <button id="load-muted-btn" style="margin-bottom:8px;">刷新禁言列表</button>
-            <div id="muted-list-container"></div>
-        </div>
-        <div class="admin-section">
-            <h4>黑名单</h4>
-            <div id="blacklist-container"></div>
-        </div>
-        <div class="admin-section">
-            <h4>数据统计（视图）</h4>
-            <button id="load-stats-btn">刷新统计</button>
-            <div id="stats-container" style="margin-top:10px;"></div>
-        </div>
-        <div class="admin-section">
-            <h4>审计日志（触发器）</h4>
-            <button id="load-audit-btn">刷新日志</button>
-            <div id="audit-container" style="margin-top:10px;"></div>
-        </div>
-        <div class="admin-section">
-            <h4>聊天记录查询</h4>
-            <div style="margin-bottom:8px;">
-                <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                <button id="admin-history-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+        <div id="admin-panel-content" style="padding:0 18px 14px; overflow-y:auto; height:calc(100% - 52px);">
+            <div class="admin-section">
+                <h4>房间设置</h4>
+                <input type="text" id="room-name-input" placeholder="房间名称" value="{{ room_name }}">
+                <button id="save-room-name">保存名称</button>
+                <hr>
+                <input type="text" id="password-input-admin" placeholder="设置新密码（留空清除）">
+                <button id="set-password-btn">设置密码</button>
+                <button id="clear-password-btn">清除密码</button>
+                <hr>
+                <span id="room-status-text"></span>
+                <hr>
+                <input type="number" id="file-limit-input" min="0" step="1" placeholder="单文件大小上限 MB（0 = 不限）">
+                <button id="set-file-limit-btn">保存限额</button>
+                <hr>
+                <input type="number" id="max-history-input" min="10" step="10" placeholder="保留消息条数（默认200）">
+                <button id="set-max-history-btn">保存条数</button>
+                <hr>
+                <input type="number" id="recall-time-input" min="0" step="30" placeholder="撤回时限秒数（0=不允许撤回）">
+                <button id="set-recall-time-btn">保存时限</button>
+                <hr>
+                <button id="toggle-room-btn">关闭/开启房间</button>
+                <button id="clear-history-btn" style="background:#f56c6c;">清空记录</button>
             </div>
-            <div id="admin-history-results" style="max-height:300px;overflow-y:auto;"></div>
-        </div>
-        <div class="admin-section">
-            <h4>聊天文件查询</h4>
-            <div style="margin-bottom:8px;">
-                <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                <button id="admin-files-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+            <div class="admin-section">
+                <h4>在线用户</h4>
+                <div id="admin-user-list"></div>
             </div>
-            <div id="admin-files-results" style="max-height:300px;overflow-y:auto;"></div>
+            <div class="admin-section">
+                <h4>禁言名单</h4>
+                <button id="load-muted-btn" style="margin-bottom:8px;">刷新禁言列表</button>
+                <div id="muted-list-container"></div>
+            </div>
+            <div class="admin-section">
+                <h4>黑名单</h4>
+                <div id="blacklist-container"></div>
+            </div>
+            <div class="admin-section">
+                <h4>数据统计（视图）</h4>
+                <button id="load-stats-btn">刷新统计</button>
+                <div id="stats-container" style="margin-top:10px;"></div>
+            </div>
+            <div class="admin-section">
+                <h4>审计日志（触发器）</h4>
+                <button id="load-audit-btn">刷新日志</button>
+                <div id="audit-container" style="margin-top:10px;"></div>
+            </div>
+            <div class="admin-section">
+                <h4>聊天记录查询</h4>
+                <div style="margin-bottom:8px;">
+                    <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                    <button id="admin-history-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                </div>
+                <div id="admin-history-results"></div>
+            </div>
+            <div class="admin-section">
+                <h4>聊天文件查询</h4>
+                <div style="margin-bottom:8px;">
+                    <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                    <button id="admin-files-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                </div>
+                <div id="admin-files-results"></div>
+            </div>
         </div>
+        <div class="panel-resize-handle" data-panel="admin-panel"></div>
     </div>
     {% endif %}
 
@@ -616,6 +644,9 @@
                 if (moreToggle) {
                     moreToggle.addEventListener('click', () => {
                         morePanel.style.display = morePanel.style.display === 'block' ? 'none' : 'block';
+                        if (morePanel.style.display === 'block') {
+                            morePanel.style.animation = 'panelIn .2s ease';
+                        }
                     });
                 }
                 if (closeMore) {
@@ -807,6 +838,7 @@
             toggleBtn.addEventListener('click', () => {
                 panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
                 if (panel.style.display === 'block') {
+                    panel.style.animation = 'panelIn .2s ease';
                     loadAdminUsers();
                     loadBlacklist();
                     loadFileLimit();
@@ -1258,6 +1290,68 @@
                 })
                 .catch(() => { container.innerHTML = '<p style="color:#f56c6c;">加载失败</p>'; });
         }
+
+        // ===== 面板拖拽 + 缩放 =====
+        (function initPanelDragResize() {
+            const panels = [
+                { id: 'admin-panel', minW: 300, minH: 400, maxW: 600, maxH: 800 },
+                { id: 'more-panel',  minW: 320, minH: 350, maxW: 600, maxH: 800 }
+            ];
+            panels.forEach(cfg => {
+                const panel = document.getElementById(cfg.id);
+                if (!panel) return;
+                const handle = panel.querySelector('.panel-drag-handle');
+                const resizeHandle = panel.querySelector('.panel-resize-handle');
+
+                // --- 拖拽移动 ---
+                if (handle) {
+                    let dragging = false, startX, startY, startLeft, startTop;
+                    handle.addEventListener('mousedown', e => {
+                        if (e.target.closest('#close-admin-panel, #close-more-panel')) return;
+                        dragging = true;
+                        const rect = panel.getBoundingClientRect();
+                        startX = e.clientX; startY = e.clientY;
+                        startLeft = rect.left; startTop = rect.top;
+                        panel.style.right = 'auto';
+                        panel.style.left = startLeft + 'px';
+                        panel.style.top = startTop + 'px';
+                        e.preventDefault();
+                    });
+                    document.addEventListener('mousemove', e => {
+                        if (!dragging) return;
+                        panel.style.left = (startLeft + e.clientX - startX) + 'px';
+                        panel.style.top  = (startTop  + e.clientY - startY) + 'px';
+                    });
+                    document.addEventListener('mouseup', () => { dragging = false; });
+                }
+
+                // --- 缩放大小 ---
+                if (resizeHandle) {
+                    let resizing = false, startX, startY, startW, startH;
+                    resizeHandle.addEventListener('mousedown', e => {
+                        resizing = true;
+                        const rect = panel.getBoundingClientRect();
+                        startX = e.clientX; startY = e.clientY;
+                        startW = rect.width; startH = rect.height;
+                        panel.style.right = 'auto';
+                        panel.style.left = rect.left + 'px';
+                        panel.style.top = rect.top + 'px';
+                        e.preventDefault();
+                        e.stopPropagation();
+                    });
+                    document.addEventListener('mousemove', e => {
+                        if (!resizing) return;
+                        let newW = startW + e.clientX - startX;
+                        let newH = startH + e.clientY - startY;
+                        newW = Math.max(cfg.minW, Math.min(cfg.maxW, newW));
+                        newH = Math.max(cfg.minH, Math.min(cfg.maxH, newH));
+                        panel.style.width = newW + 'px';
+                        panel.style.height = newH + 'px';
+                    });
+                    document.addEventListener('mouseup', () => { resizing = false; });
+                }
+            });
+        })();
 
         function escapeHtml(text) {
             const div = document.createElement('div');
