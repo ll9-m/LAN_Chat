@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>房间管理 - 在线匿名聊天室</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; min-height: 100vh; padding: 20px; }
+        .header { max-width: 900px; margin: 0 auto 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.4rem; color: #333; }
+        .btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: opacity .15s; text-decoration: none; display: inline-block; }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #12b7f5; color: white; }
+        .btn-danger { background: #f56c6c; color: white; }
+        .btn-success { background: #67c23a; color: white; }
+        .btn-warning { background: #e6a23c; color: white; }
+        .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+        .room-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .room-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); transition: box-shadow .2s; }
+        .room-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+        .room-card h3 { font-size: 1rem; margin-bottom: 8px; color: #333; }
+        .room-card .info { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
+        .room-card .status { font-size: 0.8rem; margin-bottom: 12px; }
+        .room-card .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+        .dot-green { background: #67c23a; }
+        .dot-red { background: #f56c6c; }
+        .room-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .room-card .qr-thumb { width: 80px; height: 80px; border-radius: 6px; cursor: pointer; border: 1px solid #eee; margin-bottom: 10px; }
+        .room-card .qr-thumb:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .empty-msg { max-width: 900px; margin: 40px auto; text-align: center; color: #999; font-size: 0.95rem; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 12px; padding: 24px; width: 360px; max-width: 90%; box-shadow: 0 8px 40px rgba(0,0,0,0.2); }
+        .modal h3 { font-size: 1.05rem; margin-bottom: 16px; }
+        .modal input { width: 100%; padding: 9px 12px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 0.9rem; margin-bottom: 12px; outline: none; }
+        .modal input:focus { border-color: #12b7f5; }
+        .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .qr-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; cursor: zoom-out; }
+        .qr-modal.active { display: flex; }
+        .qr-modal img { max-width: 300px; max-height: 300px; border-radius: 8px; background: white; padding: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>房间管理</h1>
+        <button class="btn btn-primary" id="create-btn">+ 新建房间</button>
+    </div>
+    <div class="room-grid" id="room-grid"></div>
+    <div class="empty-msg" id="empty-msg" style="display:none;">暂无房间，点击"新建房间"创建第一个</div>
+
+    <div class="modal-overlay" id="create-modal">
+        <div class="modal">
+            <h3>新建房间</h3>
+            <input type="text" id="new-room-name" placeholder="房间名称" maxlength="30">
+            <input type="password" id="new-room-pw" placeholder="密码（可选）">
+            <div class="modal-actions">
+                <button class="btn" style="background:#f5f5f5;" id="create-cancel">取消</button>
+                <button class="btn btn-primary" id="create-confirm">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="qr-modal" id="qr-modal"><img id="qr-modal-img" src=""></div>
+
+    <script>
+        const grid = document.getElementById('room-grid');
+        const emptyMsg = document.getElementById('empty-msg');
+        const createModal = document.getElementById('create-modal');
+        const qrModal = document.getElementById('qr-modal');
+        const qrModalImg = document.getElementById('qr-modal-img');
+        const IP = '{{ ip }}';
+
+        function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+        function loadRooms() {
+            fetch('/api/rooms/status').then(r => r.json()).then(data => {
+                const rooms = data.rooms || [];
+                if (!rooms.length) { grid.innerHTML = ''; emptyMsg.style.display = 'block'; return; }
+                emptyMsg.style.display = 'none';
+                grid.innerHTML = rooms.map(r => {
+                    const dotClass = r.is_open ? 'dot-green' : 'dot-red';
+                    const statusText = r.is_open ? '开放中' : '已关闭';
+                    return `<div class="room-card">
+                        <img class="qr-thumb" src="/api/rooms/qr/${r.room_id}?t=${Date.now()}" onclick="showQR('${r.room_id}')" alt="二维码">
+                        <h3>${escHtml(r.room_name)}</h3>
+                        <div class="info">房间ID: ${r.room_id}</div>
+                        <div class="status"><span class="dot ${dotClass}"></span>${statusText}</div>
+                        <div class="actions">
+                            <a href="/room/${r.room_id}/?admin=1" class="btn btn-primary btn-sm">进入管理</a>
+                            <a href="/room/${r.room_id}/" class="btn btn-success btn-sm" target="_blank">进入聊天</a>
+                            <button class="btn btn-warning btn-sm" onclick="toggleRoom('${r.room_id}')">${r.is_open ? '关闭' : '开启'}</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteRoom('${r.room_id}','${escHtml(r.room_name)}')">删除</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            });
+        }
+
+        function showQR(roomId) {
+            qrModalImg.src = '/api/rooms/qr/' + roomId + '?t=' + Date.now();
+            qrModal.classList.add('active');
+        }
+        qrModal.addEventListener('click', () => qrModal.classList.remove('active'));
+
+        function toggleRoom(roomId) {
+            fetch('/api/rooms/toggle', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: roomId}) })
+                .then(r => r.json()).then(() => loadRooms());
+        }
+
+        function deleteRoom(roomId, name) {
+            if (!confirm(`确定删除房间"${name}"？\n所有聊天记录和文件将被清除！`)) return;
+            fetch('/api/rooms/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: roomId}) })
+                .then(r => r.json()).then(() => loadRooms());
+        }
+
+        document.getElementById('create-btn').addEventListener('click', () => {
+            document.getElementById('new-room-name').value = '';
+            document.getElementById('new-room-pw').value = '';
+            createModal.classList.add('active');
+            document.getElementById('new-room-name').focus();
+        });
+        document.getElementById('create-cancel').addEventListener('click', () => createModal.classList.remove('active'));
+        createModal.addEventListener('click', (e) => { if (e.target === createModal) createModal.classList.remove('active'); });
+        document.getElementById('create-confirm').addEventListener('click', () => {
+            const name = document.getElementById('new-room-name').value.trim() || '新房间';
+            const pw = document.getElementById('new-room-pw').value;
+            fetch('/api/rooms/create', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, password: pw || null}) })
+                .then(r => r.json()).then(d => { if (d.success) { createModal.classList.remove('active'); loadRooms(); } else alert(d.error || '创建失败'); });
+        });
+
+        loadRooms();
+    </script>
+</body>
+</html>

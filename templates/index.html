@@ -369,123 +369,55 @@
             overflow-y: auto;
         }
 
-        /* ===== 下拉菜单 ===== */
-        .dropdown-wrap {
-            position: relative;
-            display: inline-block;
-        }
-
-        .dropdown-menu {
+        /* ===== 可拖拽弹窗 ===== */
+        .dock-window {
             display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            margin-top: 6px;
+            position: fixed;
+            z-index: 600;
             background: #fff;
-            border-radius: 8px;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
-            z-index: 500;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
             overflow: hidden;
-            animation: dropIn .15s ease;
+            min-width: 340px;
+            min-height: 200px;
+            max-width: 95vw;
+            max-height: 92vh;
+            resize: both;
         }
 
-        .dropdown-menu.open {
-            display: block;
+        .dock-window.open {
+            display: flex;
+            flex-direction: column;
         }
 
-        @keyframes dropIn {
-            from {
-                opacity: 0;
-                transform: translateY(-6px);
-            }
-
-            to {
-                opacity: 1;
-                transform: none;
-            }
-        }
-
-        .dropdown-menu .menu-header {
+        .dock-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 10px 14px;
-            border-bottom: 1px solid #f0f0f0;
+            background: linear-gradient(135deg, #12b7f5, #0ea5e9);
+            color: white;
+            cursor: move;
+            user-select: none;
+            flex-shrink: 0;
         }
 
-        .dropdown-menu .menu-header h3 {
+        .dock-header h3 {
             font-size: 0.95rem;
             font-weight: 600;
             margin: 0;
         }
 
-        .dropdown-menu .menu-header .close-btn {
-            cursor: pointer;
-            color: #999;
-            font-size: 1.1rem;
-            width: 22px;
-            height: 22px;
+        .dock-header .dock-actions {
             display: flex;
+            gap: 6px;
             align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            transition: background .15s;
         }
 
-        .dropdown-menu .menu-header .close-btn:hover {
-            background: #f0f0f0;
-        }
-
-        .dropdown-menu .menu-body {
-            padding: 10px 14px;
-            overflow-y: auto;
-        }
-
-        #admin-dropdown {
-            width: 380px;
-            max-height: 70vh;
-        }
-
-        #admin-dropdown .menu-body {
-            max-height: calc(70vh - 44px);
-        }
-
-        #more-dropdown {
-            width: 400px;
-            max-height: 65vh;
-        }
-
-        #more-dropdown .menu-body {
-            max-height: calc(65vh - 44px);
-        }
-
-        @keyframes panelIn {
-            from {
-                opacity: 0;
-                transform: translateY(-8px);
-            }
-
-            to {
-                opacity: 1;
-                transform: none;
-            }
-        }
-
-        #admin-dropdown h3,
-        #more-dropdown h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #f0f0f0;
-        }
-
-        #close-admin-panel,
-        #close-more-panel {
-            float: right;
+        .dock-header .close-btn {
             cursor: pointer;
+            color: white;
             font-size: 1.1rem;
-            color: #999;
             width: 24px;
             height: 24px;
             display: flex;
@@ -493,11 +425,78 @@
             justify-content: center;
             border-radius: 4px;
             transition: background .15s;
+            opacity: 0.8;
         }
 
-        #close-admin-panel:hover,
-        #close-more-panel:hover {
-            background: #f0f0f0;
+        .dock-header .close-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            opacity: 1;
+        }
+
+        .dock-body {
+            padding: 10px 14px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .dock-resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 16px;
+            height: 16px;
+            cursor: nwse-resize;
+            opacity: 0.3;
+        }
+
+        .dock-resize-handle::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
+            border-right: 2px solid #999;
+            border-bottom: 2px solid #999;
+        }
+
+        #admin-window {
+            width: 420px;
+            max-height: 78vh;
+            top: 80px;
+            left: calc(50% - 210px);
+        }
+
+        #more-window {
+            width: 420px;
+            max-height: 72vh;
+            top: 100px;
+            left: calc(50% - 210px);
+        }
+
+        @keyframes dockIn {
+            from {
+                opacity: 0;
+                transform: scale(0.92) translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .dock-window.open {
+            animation: dockIn .18s ease;
+        }
+
+        #admin-window h3,
+        #more-window h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #f0f0f0;
         }
 
         .admin-section {
@@ -596,19 +595,19 @@
         /* ===== 滚动条美化 ===== */
         .messages::-webkit-scrollbar,
         #admin-panel-content::-webkit-scrollbar,
-        .menu-body::-webkit-scrollbar {
+        .dock-body::-webkit-scrollbar {
             width: 5px;
         }
 
         #admin-panel-content::-webkit-scrollbar-thumb,
-        .menu-body::-webkit-scrollbar-thumb {
+        .dock-body::-webkit-scrollbar-thumb {
             background: #ccc;
             border-radius: 3px;
         }
 
         .messages::-webkit-scrollbar-track,
         #admin-panel-content::-webkit-scrollbar-track,
-        .menu-body::-webkit-scrollbar-track {
+        .dock-body::-webkit-scrollbar-track {
             background: transparent;
         }
 
@@ -714,172 +713,179 @@
             <div>
                 <span class="room-title" id="room-title">{{ room_name }}</span>
                 {% if is_admin %}
-                <span class="dropdown-wrap">
-                    <button id="admin-panel-toggle"
-                        style="margin-left:10px; background:#12b7f5; color:white;">管理</button>
-                    <div id="admin-dropdown" class="dropdown-menu">
-                        <div class="menu-header">
-                            <h3>管理面板</h3>
+                <button id="admin-panel-toggle" style="margin-left:10px; background:#12b7f5; color:white;">管理</button>
+                <div id="admin-window" class="dock-window">
+                    <div class="dock-header" id="admin-dock-header">
+                        <h3>管理面板</h3>
+                        <div class="dock-actions">
                             <span id="close-admin-panel" class="close-btn">&times;</span>
                         </div>
-                        <div class="menu-body">
-                            <div
-                                style="display:flex; gap:6px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
-                                <button id="admin-tab-settings" class="admin-tab active"
-                                    style="flex:1;padding:6px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">房间设置</button>
-                                <button id="admin-tab-users" class="admin-tab"
-                                    style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">用户管理</button>
-                                <button id="admin-tab-query" class="admin-tab"
-                                    style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">数据查询</button>
-                                <button id="admin-tab-fav" class="admin-tab"
-                                    style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">收藏夹</button>
+                    </div>
+                    <div class="dock-body">
+                        <div
+                            style="display:flex; gap:6px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
+                            <button id="admin-tab-settings" class="admin-tab active"
+                                style="flex:1;padding:6px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">房间设置</button>
+                            <button id="admin-tab-users" class="admin-tab"
+                                style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">用户管理</button>
+                            <button id="admin-tab-query" class="admin-tab"
+                                style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">数据查询</button>
+                            <button id="admin-tab-fav" class="admin-tab"
+                                style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">收藏夹</button>
+                        </div>
+                        <div id="admin-tab-content-settings" class="admin-tab-content">
+                            <div class="admin-section">
+                                <h4>房间名称</h4>
+                                <input type="text" id="room-name-input" placeholder="房间名称" value="{{ room_name }}">
+                                <button id="save-room-name">保存名称</button>
                             </div>
-                            <div id="admin-tab-content-settings" class="admin-tab-content">
-                                <div class="admin-section">
-                                    <h4>房间名称</h4>
-                                    <input type="text" id="room-name-input" placeholder="房间名称" value="{{ room_name }}">
-                                    <button id="save-room-name">保存名称</button>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>房间密码</h4>
-                                    <input type="text" id="password-input-admin" placeholder="设置新密码（留空清除）">
-                                    <button id="set-password-btn">设置密码</button>
-                                    <button id="clear-password-btn">清除密码</button>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>房间状态</h4>
-                                    <span id="room-status-text"></span>
-                                    <button id="toggle-room-btn">关闭/开启房间</button>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>文件大小上限</h4>
-                                    <input type="number" id="file-limit-input" min="0" step="1"
-                                        placeholder="单文件大小上限 MB（0 = 不限）">
-                                    <button id="set-file-limit-btn">保存限额</button>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>保留消息条数</h4>
-                                    <input type="number" id="max-history-input" min="10" step="10"
-                                        placeholder="保留消息条数（默认200）">
-                                    <button id="set-max-history-btn">保存条数</button>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>撤回时限</h4>
-                                    <input type="number" id="recall-time-input" min="0" step="30"
-                                        placeholder="撤回时限秒数（0=不允许撤回）">
-                                    <button id="set-recall-time-btn">保存时限</button>
-                                </div>
-                                <div class="admin-section">
-                                    <button id="clear-history-btn" style="background:#f56c6c;">清空聊天记录</button>
-                                    <button id="factory-reset-btn"
-                                        style="background:#f56c6c; margin-left:6px;">恢复出厂设置</button>
-                                </div>
+                            <div class="admin-section">
+                                <h4>房间密码</h4>
+                                <input type="text" id="password-input-admin" placeholder="设置新密码（留空清除）">
+                                <button id="set-password-btn">设置密码</button>
+                                <button id="clear-password-btn">清除密码</button>
                             </div>
-                            <div id="admin-tab-content-users" class="admin-tab-content" style="display:none;">
-                                <div class="admin-section">
-                                    <h4>在线用户</h4>
-                                    <button id="refresh-users-btn" style="margin-bottom:8px;">刷新列表</button>
-                                    <div id="admin-user-list"></div>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>禁言名单</h4>
-                                    <button id="load-muted-btn" style="margin-bottom:8px;">刷新禁言列表</button>
-                                    <div id="muted-list-container"></div>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>黑名单</h4>
-                                    <div id="blacklist-container"></div>
-                                </div>
+                            <div class="admin-section">
+                                <h4>房间状态</h4>
+                                <span id="room-status-text"></span>
+                                <button id="toggle-room-btn">关闭/开启房间</button>
                             </div>
-                            <div id="admin-tab-content-query" class="admin-tab-content" style="display:none;">
-                                <div class="admin-section">
-                                    <h4>数据统计</h4>
-                                    <button id="load-stats-btn">刷新统计</button>
-                                    <div id="stats-container" style="margin-top:10px;"></div>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>审计日志</h4>
-                                    <button id="load-audit-btn">刷新日志</button>
-                                    <div id="audit-container" style="margin-top:10px;"></div>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>聊天记录查询</h4>
-                                    <div style="margin-bottom:8px;">
-                                        <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..."
-                                            style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                        <button id="admin-history-search-btn"
-                                            style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
-                                    </div>
-                                    <div id="admin-history-results"></div>
-                                </div>
-                                <div class="admin-section">
-                                    <h4>聊天文件查询</h4>
-                                    <div style="margin-bottom:8px;">
-                                        <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..."
-                                            style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                        <button id="admin-files-search-btn"
-                                            style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
-                                    </div>
-                                    <div id="admin-files-results"></div>
-                                </div>
+                            <div class="admin-section">
+                                <h4>文件大小上限</h4>
+                                <input type="number" id="file-limit-input" min="0" step="1"
+                                    placeholder="单文件大小上限 MB（0 = 不限）">
+                                <button id="set-file-limit-btn">保存限额</button>
                             </div>
-                            <div id="admin-tab-content-fav" class="admin-tab-content" style="display:none;">
-                                <div class="admin-section">
-                                    <h4>我的收藏</h4>
-                                    <button id="admin-load-fav-btn" style="margin-bottom:8px;">刷新收藏</button>
-                                    <div id="admin-fav-results"></div>
+                            <div class="admin-section">
+                                <h4>保留消息条数</h4>
+                                <input type="number" id="max-history-input" min="10" step="10"
+                                    placeholder="保留消息条数（默认200）">
+                                <button id="set-max-history-btn">保存条数</button>
+                            </div>
+                            <div class="admin-section">
+                                <h4>撤回时限</h4>
+                                <input type="number" id="recall-time-input" min="0" step="30"
+                                    placeholder="撤回时限秒数（0=不允许撤回）">
+                                <button id="set-recall-time-btn">保存时限</button>
+                            </div>
+                            <div class="admin-section">
+                                <button id="clear-history-btn" style="background:#f56c6c;">清空聊天记录</button>
+                                <button id="factory-reset-btn"
+                                    style="background:#f56c6c; margin-left:6px;">恢复出厂设置</button>
+                            </div>
+                        </div>
+                        <div id="admin-tab-content-users" class="admin-tab-content" style="display:none;">
+                            <div class="admin-section">
+                                <h4 style="display:flex;align-items:center;justify-content:space-between;">在线用户 <button
+                                        id="refresh-users-btn"
+                                        style="font-size:0.75rem;padding:2px 8px;cursor:pointer;">刷新</button></h4>
+                                <div id="admin-user-list"></div>
+                            </div>
+                            <div class="admin-section">
+                                <h4 style="display:flex;align-items:center;justify-content:space-between;">禁言名单 <button
+                                        id="load-muted-btn"
+                                        style="font-size:0.75rem;padding:2px 8px;cursor:pointer;">刷新</button></h4>
+                                <div id="muted-list-container"></div>
+                            </div>
+                            <div class="admin-section">
+                                <h4 style="display:flex;align-items:center;justify-content:space-between;">黑名单 <button
+                                        id="load-blacklist-btn"
+                                        style="font-size:0.75rem;padding:2px 8px;cursor:pointer;">刷新</button></h4>
+                                <div id="blacklist-container"></div>
+                            </div>
+                        </div>
+                        <div id="admin-tab-content-query" class="admin-tab-content" style="display:none;">
+                            <div class="admin-section">
+                                <h4 style="display:flex;align-items:center;justify-content:space-between;">数据统计 <button
+                                        id="load-stats-btn"
+                                        style="font-size:0.75rem;padding:2px 8px;cursor:pointer;">刷新</button></h4>
+                                <div id="stats-container" style="margin-top:10px;"></div>
+                            </div>
+                            <div class="admin-section">
+                                <h4 style="display:flex;align-items:center;justify-content:space-between;">审计日志 <button
+                                        id="load-audit-btn"
+                                        style="font-size:0.75rem;padding:2px 8px;cursor:pointer;">刷新</button></h4>
+                                <div id="audit-container" style="margin-top:10px;"></div>
+                            </div>
+                            <div class="admin-section">
+                                <h4>聊天记录查询</h4>
+                                <div style="margin-bottom:8px;">
+                                    <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..."
+                                        style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                    <button id="admin-history-search-btn"
+                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                                 </div>
+                                <div id="admin-history-results"></div>
+                            </div>
+                            <div class="admin-section">
+                                <h4>聊天文件查询</h4>
+                                <div style="margin-bottom:8px;">
+                                    <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..."
+                                        style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                    <button id="admin-files-search-btn"
+                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                                </div>
+                                <div id="admin-files-results"></div>
+                            </div>
+                        </div>
+                        <div id="admin-tab-content-fav" class="admin-tab-content" style="display:none;">
+                            <div class="admin-section">
+                                <h4 style="display:flex;align-items:center;justify-content:space-between;">我的收藏 <button
+                                        id="admin-load-fav-btn"
+                                        style="font-size:0.75rem;padding:2px 8px;cursor:pointer;">刷新</button></h4>
+                                <div id="admin-fav-results"></div>
                             </div>
                         </div>
                     </div>
-                </span>
+                    <div class="dock-resize-handle" id="admin-resize"></div>
+                </div>
                 {% else %}
-                <span class="dropdown-wrap">
-                    <button id="more-panel-toggle"
-                        style="margin-left:10px; background:#12b7f5; color:white;">更多</button>
-                    <div id="more-dropdown" class="dropdown-menu">
-                        <div class="menu-header">
-                            <h3>更多</h3>
+                <button id="more-panel-toggle" style="margin-left:10px; background:#12b7f5; color:white;">更多</button>
+                <div id="more-window" class="dock-window">
+                    <div class="dock-header" id="more-dock-header">
+                        <h3>更多</h3>
+                        <div class="dock-actions">
                             <span id="close-more-panel" class="close-btn">&times;</span>
                         </div>
-                        <div class="menu-body">
-                            <div
-                                style="display:flex; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
-                                <button id="tab-chat-history" class="more-tab active"
-                                    style="flex:1;padding:7px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天记录</button>
-                                <button id="tab-chat-files" class="more-tab"
-                                    style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天文件</button>
-                                <button id="tab-favorites" class="more-tab"
-                                    style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">收藏夹</button>
+                    </div>
+                    <div class="dock-body">
+                        <div
+                            style="display:flex; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
+                            <button id="tab-chat-history" class="more-tab active"
+                                style="flex:1;padding:7px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天记录</button>
+                            <button id="tab-chat-files" class="more-tab"
+                                style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天文件</button>
+                            <button id="tab-favorites" class="more-tab"
+                                style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">收藏夹</button>
+                        </div>
+                        <div id="more-tab-chat-history" class="more-tab-content">
+                            <div style="margin-bottom:10px;">
+                                <input type="text" id="history-search-nick" placeholder="输入昵称搜索..."
+                                    style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                <button id="history-search-btn"
+                                    style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                             </div>
-                            <div id="more-tab-chat-history" class="more-tab-content">
-                                <div style="margin-bottom:10px;">
-                                    <input type="text" id="history-search-nick" placeholder="输入昵称搜索..."
-                                        style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                    <button id="history-search-btn"
-                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
-                                </div>
-                                <div id="history-results"></div>
+                            <div id="history-results"></div>
+                        </div>
+                        <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
+                            <div style="margin-bottom:10px;">
+                                <input type="text" id="files-search-nick" placeholder="输入昵称搜索..."
+                                    style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                <button id="files-search-btn"
+                                    style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                             </div>
-                            <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
-                                <div style="margin-bottom:10px;">
-                                    <input type="text" id="files-search-nick" placeholder="输入昵称搜索..."
-                                        style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                    <button id="files-search-btn"
-                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
-                                </div>
-                                <div id="files-results"></div>
+                            <div id="files-results"></div>
+                        </div>
+                        <div id="more-tab-favorites" class="more-tab-content" style="display:none;">
+                            <div style="margin-bottom:10px;">
+                                <button id="load-fav-btn"
+                                    style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">刷新收藏</button>
                             </div>
-                            <div id="more-tab-favorites" class="more-tab-content" style="display:none;">
-                                <div style="margin-bottom:10px;">
-                                    <button id="load-fav-btn"
-                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">刷新收藏</button>
-                                </div>
-                                <div id="fav-results"></div>
-                            </div>
+                            <div id="fav-results"></div>
                         </div>
                     </div>
-                </span>
+                    <div class="dock-resize-handle" id="more-resize"></div>
+                </div>
                 {% endif %}
             </div>
             <div>
@@ -939,6 +945,8 @@
         let fileLimitMb = 0;   // 单文件大小上限（MB），0 = 不限；加入时由服务器下发
         const isAdmin = {{ 'true' if is_admin else 'false' }};
         const hasPassword = {{ 'true' if has_password else 'false' }};
+        const roomId = '{{ room_id }}';
+        const roomBase = '/room/' + roomId;
         let eventSource = null;
 
         const joinOverlay = document.getElementById('join-overlay');
@@ -957,7 +965,7 @@
         async function init() {
             try {
                 // 按设备 ID 拉取档案，自动回填上次使用的昵称
-                const profileRes = await fetch('/api/get_profile?device_id=' + encodeURIComponent(deviceId));
+                const profileRes = await fetch(roomBase + '/api/get_profile?device_id=' + encodeURIComponent(deviceId));
                 const profileData = await profileRes.json();
                 if (isAdmin) {
                     nicknameInput.value = 'admin';
@@ -984,7 +992,7 @@
         });
 
         function joinChat(nick, password) {
-            fetch('/api/join', {
+            fetch(roomBase + '/api/join', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ nickname: nick, password: password, user_id: userId, is_admin: isAdmin, device_id: deviceId })
@@ -1015,7 +1023,7 @@
         }
 
         function initChat() {
-            eventSource = new EventSource('/stream');
+            eventSource = new EventSource(roomBase + '/stream');
             eventSource.onmessage = function (event) {
                 const data = JSON.parse(event.data);
                 if (data.type === 'message') {
@@ -1101,7 +1109,7 @@
             // "更多"面板（普通用户使用）
             if (!isAdmin) {
                 const moreToggle = document.getElementById('more-panel-toggle');
-                const moreDropdown = document.getElementById('more-dropdown');
+                const moreDropdown = document.getElementById('more-window');
                 const closeMore = document.getElementById('close-more-panel');
                 if (moreToggle) {
                     moreToggle.addEventListener('click', (e) => {
@@ -1148,7 +1156,7 @@
         function sendMessage() {
             const content = messageInput.value.trim();
             if (!content) return;
-            fetch('/api/send', {
+            fetch(roomBase + '/api/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, content, type: 'text' })
@@ -1177,11 +1185,11 @@
         function uploadAndSend(file, msgType) {
             const formData = new FormData();
             formData.append('file', file);
-            fetch('/api/upload_file', { method: 'POST', body: formData })
+            fetch(roomBase + '/api/upload_file', { method: 'POST', body: formData })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        fetch('/api/send', {
+                        fetch(roomBase + '/api/send', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -1322,7 +1330,7 @@
             ctxFavorite.addEventListener('click', () => {
                 if (!currentMsgDiv) return;
                 const msgId = currentMsgDiv.dataset.msgId;
-                fetch('/api/favorites/add', {
+                fetch(roomBase + '/api/favorites/add', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: userId, message_id: msgId })
@@ -1337,7 +1345,7 @@
             ctxRecall.addEventListener('click', () => {
                 if (!currentMsgDiv) return;
                 if (!confirm('确定撤回此消息？')) return;
-                fetch('/api/recall_message', {
+                fetch(roomBase + '/api/recall_message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: userId, message_id: currentMsgDiv.dataset.msgId })
@@ -1349,7 +1357,7 @@
             ctxDelete.addEventListener('click', () => {
                 if (!currentMsgDiv) return;
                 if (!confirm('确定删除此消息？')) return;
-                fetch('/api/admin/delete_message', {
+                fetch(roomBase + '/api/admin/delete_message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: userId, message_id: currentMsgDiv.dataset.msgId })
@@ -1365,12 +1373,11 @@
 
         function initAdminPanel() {
             const toggleBtn = document.getElementById('admin-panel-toggle');
-            const dropdown = document.getElementById('admin-dropdown');
+            const dropdown = document.getElementById('admin-window');
             toggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const isOpen = dropdown.classList.toggle('open');
                 if (isOpen) {
-                    // 默认加载房间设置tab
                     switchAdminTab('settings');
                     loadFileLimit();
                     loadMaxHistory();
@@ -1402,6 +1409,7 @@
             document.getElementById('load-stats-btn').addEventListener('click', loadStats);
             document.getElementById('load-audit-btn').addEventListener('click', loadAuditLog);
             document.getElementById('load-muted-btn').addEventListener('click', loadMutedUsers);
+            document.getElementById('load-blacklist-btn').addEventListener('click', loadBlacklist);
             document.getElementById('admin-history-search-btn').addEventListener('click', () => {
                 searchChatHistory('admin-history-nick', 'admin-history-results');
             });
@@ -1418,7 +1426,7 @@
 
         // 打开管理面板时回填当前单文件限额
         function loadFileLimit() {
-            fetch('/api/room_status').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 fileLimitMb = data.file_limit_mb || 0;
                 document.getElementById('file-limit-input').value = fileLimitMb;
             });
@@ -1427,7 +1435,7 @@
         function setFileLimit() {
             const val = parseInt(document.getElementById('file-limit-input').value, 10);
             if (isNaN(val) || val < 0) { alert('请输入不小于 0 的整数（0 = 不限制）'); return; }
-            fetch('/api/admin/set_file_limit', {
+            fetch(roomBase + '/api/admin/set_file_limit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, limit_mb: val })
@@ -1440,7 +1448,7 @@
         }
 
         function loadMaxHistory() {
-            fetch('/api/room_status').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 document.getElementById('max-history-input').value = data.max_history || 200;
             });
         }
@@ -1448,7 +1456,7 @@
         function setMaxHistory() {
             const val = parseInt(document.getElementById('max-history-input').value, 10);
             if (isNaN(val) || val < 10) { alert('请输入不小于 10 的整数'); return; }
-            fetch('/api/admin/set_max_history', {
+            fetch(roomBase + '/api/admin/set_max_history', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, max_history: val })
@@ -1461,7 +1469,7 @@
 
         function clearHistory() {
             if (!confirm('确定要清空所有聊天记录吗？此操作不可恢复！')) return;
-            fetch('/api/admin/clear_history', {
+            fetch(roomBase + '/api/admin/clear_history', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId })
@@ -1476,7 +1484,7 @@
         function factoryReset() {
             if (!confirm('确定要恢复出厂设置吗？\n\n将清空：聊天记录、用户档案、黑名单、上传文件\n房间设置将恢复默认\n\n此操作不可恢复！')) return;
             if (!confirm('再次确认：真的要恢复出厂设置吗？')) return;
-            fetch('/api/admin/factory_reset', {
+            fetch(roomBase + '/api/admin/factory_reset', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId })
@@ -1489,7 +1497,7 @@
         }
 
         function loadRecallTimeLimit() {
-            fetch('/api/room_status').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 document.getElementById('recall-time-input').value = data.recall_time_limit || 300;
             });
         }
@@ -1497,7 +1505,7 @@
         function setRecallTimeLimit() {
             const val = parseInt(document.getElementById('recall-time-input').value, 10);
             if (isNaN(val) || val < 0) { alert('请输入不小于 0 的整数（0 = 不允许撤回）'); return; }
-            fetch('/api/admin/set_recall_time_limit', {
+            fetch(roomBase + '/api/admin/set_recall_time_limit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, limit: val })
@@ -1509,7 +1517,7 @@
         }
 
         function loadStats() {
-            fetch('/api/admin/message_stats').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/admin/message_stats').then(res => res.json()).then(data => {
                 const container = document.getElementById('stats-container');
                 let html = `<p><b>总消息数：</b>${data.total_messages}</p>`;
 
@@ -1546,7 +1554,7 @@
         }
 
         function loadAuditLog() {
-            fetch('/api/admin/audit_log?limit=20').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/admin/audit_log?limit=20').then(res => res.json()).then(data => {
                 const container = document.getElementById('audit-container');
                 if (!data.logs || data.logs.length === 0) {
                     container.innerHTML = '<p style="color:#999;">暂无审计记录</p>';
@@ -1565,7 +1573,7 @@
         }
 
         function loadAdminUsers() {
-            fetch('/api/admin/online_users', {
+            fetch(roomBase + '/api/admin/online_users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ admin_id: userId })
@@ -1595,7 +1603,7 @@
                         if (duration === null) return;
                         const seconds = parseInt(duration, 10);
                         if (!seconds || seconds <= 0) { alert('请输入有效的秒数'); return; }
-                        fetch('/api/admin/mute_user', {
+                        fetch(roomBase + '/api/admin/mute_user', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ admin_id: userId, target_id: targetId, duration: seconds })
@@ -1606,11 +1614,15 @@
                     btn.addEventListener('click', () => {
                         const targetId = btn.dataset.id;
                         if (confirm('踢出该用户?')) {
-                            fetch('/api/admin/kick_user', {
+                            fetch(roomBase + '/api/admin/kick_user', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ admin_id: userId, target_id: targetId })
-                            }).then(() => loadBlacklist());
+                            }).then(res => res.json()).then(d => {
+                                if (d.error) { alert(d.error); return; }
+                                loadAdminUsers();
+                                loadBlacklist();
+                            });
                         }
                     });
                 });
@@ -1618,7 +1630,7 @@
         }
 
         function loadBlacklist() {
-            fetch('/api/admin/blacklist?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/admin/blacklist?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
                 const container = document.getElementById('blacklist-container');
                 // 黑名单按设备 ID 维度，同时展示踢出时的昵称和 IP 方便辨认
                 container.innerHTML = (data.items || []).map(item => `
@@ -1626,7 +1638,7 @@
                             <span style="font-size:0.8rem;color:#999;">(${escapeHtml(item.ip || '未知IP')})</span>
                             <button onclick="removeBlacklist('${item.device_id}')">解除</button></div>`).join('');
                 window.removeBlacklist = function (blockedDeviceId) {
-                    fetch('/api/admin/remove_blacklist', {
+                    fetch(roomBase + '/api/admin/remove_blacklist', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ user_id: userId, device_id: blockedDeviceId })
@@ -1639,7 +1651,7 @@
         let mutedCountdownTimer = null;
 
         function loadMutedUsers() {
-            fetch('/api/admin/muted_users?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/admin/muted_users?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
                 const container = document.getElementById('muted-list-container');
                 const users = data.users || [];
                 if (users.length === 0) {
@@ -1666,7 +1678,7 @@
                         const targetUid = btn.dataset.uid;
                         const targetDid = btn.dataset.did;
                         if (!targetUid) { alert('该用户已离线，无法在线解除禁言（禁言将在到期后自动清除）'); return; }
-                        fetch('/api/admin/unmute_user', {
+                        fetch(roomBase + '/api/admin/unmute_user', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ admin_id: userId, target_id: targetUid })
@@ -1705,7 +1717,7 @@
 
         function saveRoomName() {
             const name = document.getElementById('room-name-input').value.trim();
-            fetch('/api/admin/set_room_name', {
+            fetch(roomBase + '/api/admin/set_room_name', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, name })
@@ -1714,25 +1726,25 @@
 
         function setPassword() {
             const pw = document.getElementById('password-input-admin').value.trim();
-            fetch('/api/admin/set_password', {
+            fetch(roomBase + '/api/admin/set_password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, password: pw })
-            }).then(res => res.json()).then(d => alert(d.message));
+            }).then(res => res.json()).then(d => alert(d.success ? '密码已设置' : (d.error || '设置失败')));
         }
 
         function clearPassword() {
-            fetch('/api/admin/set_password', {
+            fetch(roomBase + '/api/admin/set_password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, password: '' })
-            }).then(res => res.json()).then(d => alert(d.message));
+            }).then(res => res.json()).then(d => alert(d.success ? '密码已清除' : (d.error || '清除失败')));
         }
 
         function toggleRoomOpen() {
-            fetch('/api/room_status').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 const newOpen = !data.open;
-                fetch('/api/admin/set_room_open', {
+                fetch(roomBase + '/api/admin/set_room_open', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: userId, open: newOpen })
@@ -1783,7 +1795,7 @@
         function loadFavorites(resultId) {
             const container = document.getElementById(resultId);
             container.innerHTML = '<p style="color:#999;">加载中...</p>';
-            fetch('/api/favorites/list?user_id=' + encodeURIComponent(userId))
+            fetch(roomBase + '/api/favorites/list?user_id=' + encodeURIComponent(userId))
                 .then(r => r.json())
                 .then(data => {
                     const items = data.items || [];
@@ -1825,7 +1837,7 @@
                     container.querySelectorAll('.fav-remove-btn').forEach(btn => {
                         btn.addEventListener('click', () => {
                             if (!confirm('确定删除此收藏？')) return;
-                            fetch('/api/favorites/remove', {
+                            fetch(roomBase + '/api/favorites/remove', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ user_id: userId, fav_id: btn.dataset.favId })
@@ -1840,7 +1852,7 @@
                         link.addEventListener('click', () => {
                             const url = link.dataset.url;
                             const name = link.dataset.name;
-                            fetch('/api/file_exists?url=' + encodeURIComponent(url))
+                            fetch(roomBase + '/api/file_exists?url=' + encodeURIComponent(url))
                                 .then(r => r.json())
                                 .then(d => {
                                     if (d.exists) {
@@ -1860,7 +1872,7 @@
             const nick = document.getElementById(nickInputId).value.trim();
             const container = document.getElementById(resultId);
             container.innerHTML = '<p style="color:#999;">加载中...</p>';
-            fetch('/api/query_messages?nickname=' + encodeURIComponent(nick))
+            fetch(roomBase + '/api/query_messages?nickname=' + encodeURIComponent(nick))
                 .then(res => res.json())
                 .then(data => {
                     const groups = data.groups || [];
@@ -1892,7 +1904,7 @@
             const nick = document.getElementById(nickInputId).value.trim();
             const container = document.getElementById(resultId);
             container.innerHTML = '<p style="color:#999;">加载中...</p>';
-            fetch('/api/query_files?nickname=' + encodeURIComponent(nick))
+            fetch(roomBase + '/api/query_files?nickname=' + encodeURIComponent(nick))
                 .then(res => res.json())
                 .then(data => {
                     const groups = data.groups || [];
@@ -1902,13 +1914,14 @@
                     }
                     let html = '';
                     groups.forEach(g => {
+                        const files = g.messages || g.files || [];
                         html += `<div style="margin-bottom:15px;border:1px solid #eee;border-radius:6px;padding:10px;">
                             <div style="font-weight:bold;margin-bottom:6px;">
                                 ${escapeHtml(g.avatar || '😀')} ${escapeHtml(g.sender)}
-                                <span style="font-size:0.75rem;color:#999;margin-left:6px;">${g.files.length}个文件</span>
+                                <span style="font-size:0.75rem;color:#999;margin-left:6px;">${files.length}个文件</span>
                             </div>
                             <div style="max-height:200px;overflow-y:auto;">`;
-                        g.files.forEach(f => {
+                        files.forEach(f => {
                             const t = new Date(f.timestamp * 1000).toLocaleString('zh-CN');
                             const isImg = f.type === 'image';
                             const exists = f.file_exists;
@@ -1940,13 +1953,61 @@
         // ===== 面板拖拽 + 缩放 =====
         // 点击菜单外区域自动关闭下拉菜单
         document.addEventListener('click', (e) => {
-            const adminDD = document.getElementById('admin-dropdown');
-            const moreDD = document.getElementById('more-dropdown');
-            if (adminDD && adminDD.classList.contains('open') && !e.target.closest('#admin-dropdown') && !e.target.closest('#admin-panel-toggle'))
+            const adminDD = document.getElementById('admin-window');
+            const moreDD = document.getElementById('more-window');
+            if (adminDD && adminDD.classList.contains('open') && !e.target.closest('#admin-window') && !e.target.closest('#admin-panel-toggle'))
                 adminDD.classList.remove('open');
-            if (moreDD && moreDD.classList.contains('open') && !e.target.closest('#more-dropdown') && !e.target.closest('#more-panel-toggle'))
+            if (moreDD && moreDD.classList.contains('open') && !e.target.closest('#more-window') && !e.target.closest('#more-panel-toggle'))
                 moreDD.classList.remove('open');
         });
+
+        // ===== 可拖拽弹窗 =====
+        function makeDraggable(winEl, headerId) {
+            const header = document.getElementById(headerId);
+            let isDragging = false, startX, startY, origLeft, origTop;
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.close-btn')) return;
+                isDragging = true;
+                startX = e.clientX; startY = e.clientY;
+                const rect = winEl.getBoundingClientRect();
+                origLeft = rect.left; origTop = rect.top;
+                winEl.style.left = origLeft + 'px';
+                winEl.style.top = origTop + 'px';
+                winEl.style.right = 'auto';
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                winEl.style.left = (origLeft + e.clientX - startX) + 'px';
+                winEl.style.top = (origTop + e.clientY - startY) + 'px';
+            });
+            document.addEventListener('mouseup', () => { isDragging = false; });
+        }
+
+        function makeResizable(winEl, handleId) {
+            const handle = document.getElementById(handleId);
+            let isResizing = false, startX, startY, origW, origH;
+            const MIN_W = 340, MIN_H = 200, MAX_W = window.innerWidth * 0.95, MAX_H = window.innerHeight * 0.92;
+            handle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startX = e.clientX; startY = e.clientY;
+                origW = winEl.offsetWidth; origH = winEl.offsetHeight;
+                e.preventDefault(); e.stopPropagation();
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                const nw = Math.min(MAX_W, Math.max(MIN_W, origW + e.clientX - startX));
+                const nh = Math.min(MAX_H, Math.max(MIN_H, origH + e.clientY - startY));
+                winEl.style.width = nw + 'px';
+                winEl.style.height = nh + 'px';
+            });
+            document.addEventListener('mouseup', () => { isResizing = false; });
+        }
+
+        const adminWin = document.getElementById('admin-window');
+        if (adminWin) { makeDraggable(adminWin, 'admin-dock-header'); makeResizable(adminWin, 'admin-resize'); }
+        const moreWin = document.getElementById('more-window');
+        if (moreWin) { makeDraggable(moreWin, 'more-dock-header'); makeResizable(moreWin, 'more-resize'); }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -1957,7 +2018,7 @@
 
         window.addEventListener('beforeunload', () => {
             // sendBeacon 直接传字符串会以 text/plain 发送，被后端拒绝；用 Blob 指定 JSON 类型
-            if (userId) navigator.sendBeacon('/api/leave',
+            if (userId) navigator.sendBeacon(roomBase + '/api/leave',
                 new Blob([JSON.stringify({ user_id: userId })], { type: 'application/json' }));
         });
     </script>

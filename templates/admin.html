@@ -1,107 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理员 - 在线匿名聊天室</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-            background: #ededed;
-            display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; margin: 0;
-        }
-        .container {
-            background: white; padding: 36px 32px;
-            border-radius: 12px;
-            box-shadow: 0 6px 30px rgba(0,0,0,0.12);
-            max-width: 420px; width: 90%; text-align: center;
-        }
-        .container h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 20px; color: #333; }
-        .qr-img {
-            width: 180px; height: 180px; cursor: pointer;
-            border-radius: 8px; transition: all .25s;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-        }
-        .qr-img:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
-        .qr-img.large { width: 280px; height: 280px; }
-        .btn {
-            display: inline-block; margin-top: 14px;
-            padding: 10px 24px; border-radius: 6px; border: none;
-            cursor: pointer; font-size: 0.9rem; font-weight: 500;
-            text-decoration: none; transition: opacity .15s;
-        }
-        .btn:hover { opacity: 0.85; }
-        .status {
-            margin: 14px 0 4px; font-weight: 600; font-size: 0.9rem;
-        }
-    </style>
+    <meta http-equiv="refresh" content="0;url=/">
+    <title>跳转中...</title>
 </head>
-
 <body>
-    <div class="container">
-        <h2>房间管理</h2>
-        <img src="/static/qrcode.png" class="qr-img" id="qr-img" alt="二维码">
-        <p>房间名称：{{ room_name }}</p>
-        <div class="status" id="room-status">加载中...</div>
-        <button class="btn" id="toggle-room-btn" disabled style="background:#12b7f5;color:white;">加载中...</button>
-        <a href="/?admin=1" class="btn" style="background:#12b7f5;color:white;">进入聊天室（管理员）</a>
-        <p style="margin-top:16px; font-size:0.85rem; color:#999;">管理功能也可在聊天界面中使用</p>
-    </div>
-    <script>
-        document.getElementById('qr-img').addEventListener('click', function () {
-            this.classList.toggle('large');
-        });
-
-        function fetchRoomStatus() {
-            fetch('/api/room_status')
-                .then(res => res.json())
-                .then(data => {
-                    updateRoomStatus(data.open);
-                })
-                .catch(err => {
-                    document.getElementById('room-status').textContent = '获取状态失败';
-                });
-        }
-
-        function updateRoomStatus(open) {
-            const btn = document.getElementById('toggle-room-btn');
-            const status = document.getElementById('room-status');
-            btn.disabled = false;
-            if (open) {
-                status.textContent = '房间当前开放';
-                btn.textContent = '关闭房间';
-            } else {
-                status.textContent = '房间当前关闭';
-                btn.textContent = '打开房间';
-            }
-        }
-
-        document.getElementById('toggle-room-btn').addEventListener('click', function () {
-            fetch('/api/room_status')
-                .then(res => res.json())
-                .then(data => {
-                    const newOpen = !data.open;
-                    fetch('/api/admin/set_room_open', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_id: 'admin_console', open: newOpen })
-                    })
-                        .then(res => res.json())
-                        .then(result => {
-                            if (result.success) {
-                                updateRoomStatus(result.open);
-                                alert(result.open ? '房间已打开' : '房间已关闭');
-                            } else {
-                                alert('操作失败：' + (result.error || ''));
-                            }
-                        });
-                });
-        });
-
-        fetchRoomStatus();
-    </script>
+    <p>正在跳转到房间管理页面...</p>
 </body>
-
 </html>
