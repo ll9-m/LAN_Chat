@@ -606,15 +606,15 @@
                     const nameInput = document.getElementById('room-name-input');
                     if (nameInput) nameInput.value = data.name;
                 } else if (data.type === 'user_kicked') {
-                    if (data.user_id === userId) {
+                    if (data.nickname && data.nickname === nickname) {
                         alert('您已被管理员移出房间');
                         eventSource.close();
                         location.reload();
                     }
                 } else if (data.type === 'user_muted') {
-                    if (data.user_id === userId) alert(`您已被禁言 ${data.duration} 秒`);
+                    if (data.nickname && data.nickname === nickname) alert(`您已被禁言 ${data.duration} 秒`);
                 } else if (data.type === 'user_unmuted') {
-                    if (data.user_id === userId) alert('您已被管理员解除禁言');
+                    if (data.nickname && data.nickname === nickname) alert('您已被管理员解除禁言');
                 } else if (data.type === 'file_limit') {
                     // 管理员调整了单文件大小上限，实时生效
                     fileLimitMb = data.limit_mb || 0;
@@ -765,7 +765,7 @@
         }
 
         function appendMessage(msg, isHistory = false) {
-            const isSelf = (msg.user_id === userId);
+            const isSelf = (msg.sender === nickname);
             const msgDiv = document.createElement('div');
             if (msg.type === 'system') {
                 msgDiv.className = 'system-msg';

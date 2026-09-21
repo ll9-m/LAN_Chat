@@ -279,6 +279,11 @@ class Database:
                    color    = excluded.color''',
             (device_id, nickname, avatar, color))
 
+    def update_profile_nickname(self, device_id, nickname):
+        """仅更新昵称，不动头像/颜色/禁言状态"""
+        self._execute('UPDATE profiles SET nickname = ? WHERE device_id = ?',
+                      (nickname, device_id))
+
     def set_muted_until(self, device_id, muted_until):
         """更新设备禁言截止时间（0 表示未禁言）"""
         self._execute('UPDATE profiles SET muted_until = ? WHERE device_id = ?',
@@ -294,7 +299,7 @@ class Database:
 
     # ---------- 查询功能 ----------
     def query_messages(self, nickname=None):
-        """按昵称搜索聊天记录，按 (user_id, sender) 分组返回"""
+        """按昵称搜索聊天记录，按 sender（昵称）分组返回"""
         if nickname:
             rows = self._query(
                 'SELECT * FROM messages WHERE sender LIKE ? AND type = ? ORDER BY timestamp ASC',
@@ -305,16 +310,16 @@ class Database:
         groups = {}
         for r in rows:
             msg = self._row_to_message(r)
-            key = (msg['user_id'], msg['sender'])
+            key = msg['sender']  # 按昵称分组，同一人刷新前后昵称不变
             if key not in groups:
-                groups[key] = {'user_id': msg['user_id'], 'sender': msg['sender'],
+                groups[key] = {'sender': msg['sender'],
                                'avatar': msg['avatar'], 'color': msg['color'],
                                'messages': []}
             groups[key]['messages'].append(msg)
         return list(groups.values())
 
     def query_files(self, nickname=None):
-        """按昵称搜索文件/图片消息，按用户分组，并校验 uploads 目录中的实际文件"""
+        """按昵称搜索文件/图片消息，按 sender（昵称）分组，并校验 uploads 目录中的实际文件"""
         if nickname:
             rows = self._query(
                 'SELECT * FROM messages WHERE sender LIKE ? AND type IN (?, ?) ORDER BY timestamp ASC',
@@ -332,9 +337,9 @@ class Database:
                 msg['file_exists'] = os.path.isfile(os.path.join(UPLOAD_FOLDER, filename))
             else:
                 msg['file_exists'] = False
-            key = (msg['user_id'], msg['sender'])
+            key = msg['sender']  # 按昵称分组
             if key not in groups:
-                groups[key] = {'user_id': msg['user_id'], 'sender': msg['sender'],
+                groups[key] = {'sender': msg['sender'],
                                'avatar': msg['avatar'], 'color': msg['color'],
                                'files': []}
             groups[key]['files'].append(msg)
@@ -638,8 +643,11 @@ class ChatRoom:
                 'is_admin': False, 'muted_until': 0,
                 'avatar': avatar, 'color': color,
             }
-            # 保存/更新设备档案（数据库 UPSERT 会保留已有禁言状态）
-            self.db.save_profile(device_id, nickname, avatar, color)
+            # 新设备才建档（首次加入）；老设备只更新昵称，不动头像/颜色
+            if not profile:
+                self.db.save_profile(device_id, nickname, avatar, color)
+            elif profile['nickname'] != nickname:
+                self.db.update_profile_nickname(device_id, nickname)
 
         self.broadcaster.broadcast(self.user_list_event())
         self._system_message(f'{nickname} 加入了房间')
@@ -781,6 +789,7 @@ class ChatRoom:
             target['muted_until'] = time.time() + duration
         self.db.set_muted_until(device_id, time.time() + duration)
         self.broadcaster.broadcast({'type': 'user_muted', 'user_id': target_id,
+                                    'nickname': target['nickname'],
                                     'duration': duration})
         return {'success': True}, 200
 
@@ -797,7 +806,8 @@ class ChatRoom:
             device_id = target['device_id']
             target['muted_until'] = 0
         self.db.set_muted_until(device_id, 0)
-        self.broadcaster.broadcast({'type': 'user_unmuted', 'user_id': target_id})
+        self.broadcaster.broadcast({'type': 'user_unmuted', 'user_id': target_id,
+                                    'nickname': target['nickname']})
         return {'success': True}, 200
 
     def get_muted_users(self, admin_id):
@@ -840,7 +850,8 @@ class ChatRoom:
             del self.online_users[target_id]
         self.db.add_blacklist(target['device_id'], target['nickname'], target['ip'])
         self.broadcaster.broadcast(self.user_list_event())
-        self.broadcaster.broadcast({'type': 'user_kicked', 'user_id': target_id})
+        self.broadcaster.broadcast({'type': 'user_kicked', 'user_id': target_id,
+                                    'nickname': target['nickname']})
         return {'success': True}, 200
 
     def online_list(self, admin_id):
