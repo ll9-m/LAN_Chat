@@ -203,11 +203,11 @@
             padding: 0 20px; font-size: 0.9rem; font-weight: 500;
         }
         #send-btn:hover { background: #0ea5e0; }
-        #image-btn, #file-btn {
+        #file-btn {
             background: #fff; color: #666;
             border: 1px solid #dcdfe6 !important;
         }
-        #image-btn:hover, #file-btn:hover { background: #f0f0f0; }
+        #file-btn:hover { background: #f0f0f0; }
 
         /* ===== 管理/更多面板通用 ===== */
         #more-panel {
@@ -309,6 +309,39 @@
             border-radius: 0 0 3px 0;
         }
         .panel-resize-handle:hover::after { border-color: #12b7f5; }
+
+        /* ===== 图片 Lightbox ===== */
+        .img-bubble {
+            max-width: 200px; border-radius: 6px; cursor: pointer;
+            transition: transform .15s;
+        }
+        .img-bubble:hover { transform: scale(1.03); }
+        #image-lightbox {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 2000; justify-content: center; align-items: center;
+            backdrop-filter: blur(6px);
+        }
+        #image-lightbox.active { display: flex; }
+        #lightbox-img {
+            max-width: 90vw; max-height: 85vh; border-radius: 8px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+            cursor: zoom-out;
+        }
+        #lightbox-close {
+            position: absolute; top: 16px; right: 20px;
+            color: #fff; font-size: 2rem; cursor: pointer;
+            width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; background: rgba(255,255,255,0.15); transition: background .15s;
+        }
+        #lightbox-close:hover { background: rgba(255,255,255,0.3); }
+        #lightbox-download {
+            position: absolute; bottom: 20px; right: 20px;
+            color: #fff; font-size: 0.9rem; text-decoration: none;
+            padding: 8px 18px; border-radius: 6px;
+            background: rgba(255,255,255,0.2); transition: background .15s;
+        }
+        #lightbox-download:hover { background: rgba(255,255,255,0.35); }
     </style>
 </head>
 
@@ -346,11 +379,9 @@
         <div class="messages" id="messages"></div>
         <div class="input-area">
             <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
-            <button id="image-btn" title="发送图片">📷</button>
-            <button id="file-btn" title="发送文件">📎</button>
+            <button id="file-btn" title="发送文件/图片">📎</button>
             <button id="send-btn">发送</button>
-            <input type="file" id="file-input" accept="image/*" style="display:none;">
-            <input type="file" id="any-file-input" style="display:none;">
+            <input type="file" id="any-file-input" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.mp3,.mp4,.wav,.flac,.py,.js,.html,.css,.json,.xml,.csv" style="display:none;">
         </div>
     </div>
 
@@ -462,6 +493,12 @@
     </div>
     {% endif %}
 
+    <div id="image-lightbox">
+        <span id="lightbox-close">&times;</span>
+        <img id="lightbox-img" src="">
+        <a id="lightbox-download" href="" download>下载</a>
+    </div>
+
     <script>
 
         // 设备唯一 ID：首次访问生成并永久保存在 localStorage，作为用户身份标识（IP 变化不影响）
@@ -489,8 +526,6 @@
         const messagesDiv = document.getElementById('messages');
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
-        const imageBtn = document.getElementById('image-btn');
-        const fileInput = document.getElementById('file-input');
         const onlineInfo = document.getElementById('online-info');
         const fileBtn = document.getElementById('file-btn');
         const anyFileInput = document.getElementById('any-file-input');
@@ -631,8 +666,6 @@
             messageInput.addEventListener('keypress', e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
             });
-            imageBtn.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', handleImageUpload);
             fileBtn.addEventListener('click', () => anyFileInput.click());
             anyFileInput.addEventListener('change', handleFileUpload);
 
@@ -694,12 +727,7 @@
             messageInput.value = '';
         }
 
-        function handleImageUpload() {
-            const file = fileInput.files[0];
-            if (!file) return;
-            uploadAndSend(file, 'image');
-            fileInput.value = '';
-        }
+        const IMAGE_EXTS = new Set(['.jpg','.jpeg','.png','.gif','.bmp','.webp','.svg']);
 
         function handleFileUpload() {
             const file = anyFileInput.files[0];
@@ -709,7 +737,10 @@
                 anyFileInput.value = '';
                 return;
             }
-            uploadAndSend(file, 'file');
+            // 自动判断类型：图片走 image，其余走 file
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            const msgType = IMAGE_EXTS.has(ext) ? 'image' : 'file';
+            uploadAndSend(file, msgType);
             anyFileInput.value = '';
         }
 
@@ -806,10 +837,12 @@
             }
         }
 
-        // 气泡内容：图片内联预览 / 文件显示下载链接+大小 / 其余按文本转义
+        // 气泡内容：图片内联预览（可点击放大） / 文件显示下载链接+大小 / 其余按文本转义
         function renderBubbleContent(msg) {
             if (msg.type === 'image') {
-                return `<img src="${escapeHtml(msg.content)}" style="max-width:200px;">`;
+                const src = escapeHtml(msg.content);
+                const name = escapeHtml(msg.file_name || '图片');
+                return `<img class="img-bubble" src="${src}" alt="${name}" onclick="openLightbox('${src}','${name}')">`;
             }
             if (msg.type === 'file') {
                 const name = escapeHtml(msg.file_name || '文件');
@@ -826,6 +859,26 @@
             if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
             return bytes + ' B';
         }
+
+        // ===== 图片 Lightbox 放大查看 =====
+        function openLightbox(src, name) {
+            const lb = document.getElementById('image-lightbox');
+            const img = document.getElementById('lightbox-img');
+            const dl = document.getElementById('lightbox-download');
+            img.src = src;
+            dl.href = src;
+            dl.download = name || '图片';
+            lb.classList.add('active');
+        }
+        (function initLightbox() {
+            const lb = document.getElementById('image-lightbox');
+            const closeBtn = document.getElementById('lightbox-close');
+            const img = document.getElementById('lightbox-img');
+            closeBtn.addEventListener('click', () => lb.classList.remove('active'));
+            img.addEventListener('click', () => lb.classList.remove('active'));
+            lb.addEventListener('click', e => { if (e.target === lb) lb.classList.remove('active'); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('active'); });
+        })();
 
         function updateOnlineUsers(data) {
             const total = (data.users?.length || 0) + (data.admin_users?.length || 0);
@@ -1269,10 +1322,12 @@
                             const isImg = f.type === 'image';
                             const exists = f.file_exists;
                             if (isImg) {
+                                const imgSrc = escapeHtml(f.content);
+                                const imgName = escapeHtml(f.file_name || '图片');
                                 html += `<div style="margin:4px 0;font-size:0.85rem;">
                                     <span style="color:#999;">[${t}]</span>
-                                    <img src="${escapeHtml(f.content)}" style="max-width:120px;max-height:80px;border-radius:4px;vertical-align:middle;">
-                                    <span style="color:#666;"> ${escapeHtml(f.file_name || '图片')}</span>
+                                    <img class="img-bubble" src="${imgSrc}" style="max-width:120px;max-height:80px;vertical-align:middle;" onclick="openLightbox('${imgSrc}','${imgName}')">
+                                    <span style="color:#666;"> ${imgName}</span>
                                     ${exists ? '' : '<span style="color:#f56c6c;font-size:0.75rem;"> [已删除]</span>'}
                                 </div>`;
                             } else {
