@@ -292,6 +292,54 @@ class Database:
             'FROM profiles WHERE muted_until > ?', (now,))
         return [dict(r) for r in rows]
 
+    # ---------- 查询功能 ----------
+    def query_messages(self, nickname=None):
+        """按昵称搜索聊天记录，按 (user_id, sender) 分组返回"""
+        if nickname:
+            rows = self._query(
+                'SELECT * FROM messages WHERE sender LIKE ? AND type = ? ORDER BY timestamp ASC',
+                (f'%{nickname}%', 'text'))
+        else:
+            rows = self._query(
+                'SELECT * FROM messages WHERE type = ? ORDER BY timestamp ASC', ('text',))
+        groups = {}
+        for r in rows:
+            msg = self._row_to_message(r)
+            key = (msg['user_id'], msg['sender'])
+            if key not in groups:
+                groups[key] = {'user_id': msg['user_id'], 'sender': msg['sender'],
+                               'avatar': msg['avatar'], 'color': msg['color'],
+                               'messages': []}
+            groups[key]['messages'].append(msg)
+        return list(groups.values())
+
+    def query_files(self, nickname=None):
+        """按昵称搜索文件/图片消息，按用户分组，并校验 uploads 目录中的实际文件"""
+        if nickname:
+            rows = self._query(
+                'SELECT * FROM messages WHERE sender LIKE ? AND type IN (?, ?) ORDER BY timestamp ASC',
+                (f'%{nickname}%', 'image', 'file'))
+        else:
+            rows = self._query(
+                'SELECT * FROM messages WHERE type IN (?, ?) ORDER BY timestamp ASC',
+                ('image', 'file'))
+        groups = {}
+        for r in rows:
+            msg = self._row_to_message(r)
+            # 检查文件是否还存在于 uploads 目录
+            if msg['content']:
+                filename = os.path.basename(msg['content'])
+                msg['file_exists'] = os.path.isfile(os.path.join(UPLOAD_FOLDER, filename))
+            else:
+                msg['file_exists'] = False
+            key = (msg['user_id'], msg['sender'])
+            if key not in groups:
+                groups[key] = {'user_id': msg['user_id'], 'sender': msg['sender'],
+                               'avatar': msg['avatar'], 'color': msg['color'],
+                               'files': []}
+            groups[key]['files'].append(msg)
+        return list(groups.values())
+
     # ---------- 消息历史 ----------
     def add_message(self, msg):
         """写入一条消息，并把历史裁剪到最近 max_history 条"""
@@ -1020,6 +1068,22 @@ def api_room_status():
     return jsonify({'open': room.room_open, 'password': room.room_password is not None,
                     'file_limit_mb': room.file_limit_mb, 'max_history': room.max_history,
                     'recall_time_limit': room.recall_time_limit})
+
+
+@app.route('/api/query_messages')
+def api_query_messages():
+    """按昵称搜索聊天记录，按用户分组"""
+    nickname = request.args.get('nickname', '').strip()
+    groups = db.query_messages(nickname if nickname else None)
+    return jsonify({'groups': groups})
+
+
+@app.route('/api/query_files')
+def api_query_files():
+    """按昵称搜索聊天文件，按用户分组"""
+    nickname = request.args.get('nickname', '').strip()
+    groups = db.query_files(nickname if nickname else None)
+    return jsonify({'groups': groups})
 
 
 # ---------- 管理员 API ----------

@@ -217,6 +217,9 @@
                 {% if is_admin %}
                 <button id="admin-panel-toggle"
                     style="margin-left:10px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px;">管理</button>
+                {% else %}
+                <button id="more-panel-toggle"
+                    style="margin-left:10px; background:#3498db; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">更多</button>
                 {% endif %}
             </div>
             <div>
@@ -233,6 +236,31 @@
             <button id="send-btn">发送</button>
             <input type="file" id="file-input" accept="image/*" style="display:none;">
             <input type="file" id="any-file-input" style="display:none;">
+        </div>
+    </div>
+
+    <div id="more-panel" style="display:none; position:fixed; top:60px; right:20px; width:400px; max-height:80vh;
+            overflow-y:auto; background:white; padding:20px; border-radius:8px;
+            box-shadow:0 4px 20px rgba(0,0,0,0.2); z-index:500;">
+        <span id="close-more-panel" style="float:right;cursor:pointer;font-size:1.2rem;">&times;</span>
+        <h3>更多</h3>
+        <div style="display:flex; gap:10px; margin:12px 0; border-bottom:1px solid #eee; padding-bottom:10px;">
+            <button id="tab-chat-history" class="more-tab active" style="flex:1;padding:6px;border:1px solid #3498db;background:#3498db;color:white;border-radius:4px;cursor:pointer;">聊天记录</button>
+            <button id="tab-chat-files" class="more-tab" style="flex:1;padding:6px;border:1px solid #ccc;background:white;color:#333;border-radius:4px;cursor:pointer;">聊天文件</button>
+        </div>
+        <div id="more-tab-chat-history" class="more-tab-content">
+            <div style="margin-bottom:10px;">
+                <input type="text" id="history-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:6px;border:1px solid #ccc;border-radius:4px;">
+                <button id="history-search-btn" style="padding:6px 12px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;">搜索</button>
+            </div>
+            <div id="history-results" style="max-height:50vh;overflow-y:auto;"></div>
+        </div>
+        <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
+            <div style="margin-bottom:10px;">
+                <input type="text" id="files-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:6px;border:1px solid #ccc;border-radius:4px;">
+                <button id="files-search-btn" style="padding:6px 12px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;">搜索</button>
+            </div>
+            <div id="files-results" style="max-height:50vh;overflow-y:auto;"></div>
         </div>
     </div>
 
@@ -288,6 +316,22 @@
             <h4>审计日志（触发器）</h4>
             <button id="load-audit-btn">刷新日志</button>
             <div id="audit-container" style="margin-top:10px;"></div>
+        </div>
+        <div class="admin-section">
+            <h4>聊天记录查询</h4>
+            <div style="margin-bottom:8px;">
+                <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:6px;border:1px solid #ccc;border-radius:4px;">
+                <button id="admin-history-search-btn" style="padding:6px 12px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;">搜索</button>
+            </div>
+            <div id="admin-history-results" style="max-height:300px;overflow-y:auto;"></div>
+        </div>
+        <div class="admin-section">
+            <h4>聊天文件查询</h4>
+            <div style="margin-bottom:8px;">
+                <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:6px;border:1px solid #ccc;border-radius:4px;">
+                <button id="admin-files-search-btn" style="padding:6px 12px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;">搜索</button>
+            </div>
+            <div id="admin-files-results" style="max-height:300px;overflow-y:auto;"></div>
         </div>
     </div>
     {% endif %}
@@ -466,6 +510,40 @@
             fileBtn.addEventListener('click', () => anyFileInput.click());
             anyFileInput.addEventListener('change', handleFileUpload);
 
+            // "更多"面板（普通用户使用）
+            if (!isAdmin) {
+                const moreToggle = document.getElementById('more-panel-toggle');
+                const morePanel = document.getElementById('more-panel');
+                const closeMore = document.getElementById('close-more-panel');
+                if (moreToggle) {
+                    moreToggle.addEventListener('click', () => {
+                        morePanel.style.display = morePanel.style.display === 'block' ? 'none' : 'block';
+                    });
+                }
+                if (closeMore) {
+                    closeMore.addEventListener('click', () => morePanel.style.display = 'none');
+                }
+                // Tab 切换
+                document.getElementById('tab-chat-history').addEventListener('click', () => switchMoreTab('chat-history'));
+                document.getElementById('tab-chat-files').addEventListener('click', () => switchMoreTab('chat-files'));
+                // 搜索按钮
+                document.getElementById('history-search-btn').addEventListener('click', () => {
+                    searchChatHistory('history-search-nick', 'history-results');
+                });
+                document.getElementById('history-search-nick').addEventListener('keypress', e => {
+                    if (e.key === 'Enter') searchChatHistory('history-search-nick', 'history-results');
+                });
+                document.getElementById('files-search-btn').addEventListener('click', () => {
+                    searchChatFiles('files-search-nick', 'files-results');
+                });
+                document.getElementById('files-search-nick').addEventListener('keypress', e => {
+                    if (e.key === 'Enter') searchChatFiles('files-search-nick', 'files-results');
+                });
+                // 加载初始数据
+                searchChatHistory('history-search-nick', 'history-results');
+                searchChatFiles('files-search-nick', 'files-results');
+            }
+
             // 退出按钮：关闭网页
             document.getElementById('exit-btn').addEventListener('click', () => {
                 if (confirm('确定要退出聊天室吗？')) {
@@ -637,6 +715,9 @@
                     loadFileLimit();
                     loadMaxHistory();
                     loadRecallTimeLimit();
+                    // 加载管理员查询初始数据
+                    searchChatHistory('admin-history-nick', 'admin-history-results');
+                    searchChatFiles('admin-files-nick', 'admin-files-results');
                 }
             });
             document.getElementById('close-admin-panel').addEventListener('click', () => panel.style.display = 'none');
@@ -651,6 +732,18 @@
             document.getElementById('load-stats-btn').addEventListener('click', loadStats);
             document.getElementById('load-audit-btn').addEventListener('click', loadAuditLog);
             document.getElementById('load-muted-btn').addEventListener('click', loadMutedUsers);
+            document.getElementById('admin-history-search-btn').addEventListener('click', () => {
+                searchChatHistory('admin-history-nick', 'admin-history-results');
+            });
+            document.getElementById('admin-history-nick').addEventListener('keypress', e => {
+                if (e.key === 'Enter') searchChatHistory('admin-history-nick', 'admin-history-results');
+            });
+            document.getElementById('admin-files-search-btn').addEventListener('click', () => {
+                searchChatFiles('admin-files-nick', 'admin-files-results');
+            });
+            document.getElementById('admin-files-nick').addEventListener('keypress', e => {
+                if (e.key === 'Enter') searchChatFiles('admin-files-nick', 'admin-files-results');
+            });
             loadMutedUsers();  // 打开面板时自动加载禁言列表
         }
 
@@ -973,6 +1066,100 @@
             history.push(msg);
             if (history.length > 500) history = history.slice(-500);
             localStorage.setItem(key, JSON.stringify(history));
+        }
+
+        // ===== 更多面板：Tab 切换 =====
+        function switchMoreTab(tab) {
+            document.querySelectorAll('.more-tab').forEach(btn => {
+                btn.style.background = 'white';
+                btn.style.color = '#333';
+                btn.style.borderColor = '#ccc';
+            });
+            document.querySelectorAll('.more-tab-content').forEach(el => el.style.display = 'none');
+            const activeBtn = document.getElementById('tab-' + tab);
+            const activeContent = document.getElementById('more-tab-' + tab);
+            if (activeBtn) { activeBtn.style.background = '#3498db'; activeBtn.style.color = 'white'; activeBtn.style.borderColor = '#3498db'; }
+            if (activeContent) activeContent.style.display = 'block';
+        }
+
+        // ===== 聊天记录搜索 =====
+        function searchChatHistory(nickInputId, resultId) {
+            const nick = document.getElementById(nickInputId).value.trim();
+            const container = document.getElementById(resultId);
+            container.innerHTML = '<p style="color:#999;">加载中...</p>';
+            fetch('/api/query_messages?nickname=' + encodeURIComponent(nick))
+                .then(res => res.json())
+                .then(data => {
+                    const groups = data.groups || [];
+                    if (groups.length === 0) {
+                        container.innerHTML = '<p style="color:#999;">没有找到聊天记录</p>';
+                        return;
+                    }
+                    let html = '';
+                    groups.forEach(g => {
+                        html += `<div style="margin-bottom:15px;border:1px solid #eee;border-radius:6px;padding:10px;">
+                            <div style="font-weight:bold;margin-bottom:6px;">
+                                ${escapeHtml(g.avatar || '😀')} ${escapeHtml(g.sender)}
+                                <span style="font-size:0.75rem;color:#999;margin-left:6px;">${g.messages.length}条消息</span>
+                            </div>
+                            <div style="max-height:200px;overflow-y:auto;background:#fafafa;border-radius:4px;padding:6px;">`;
+                        g.messages.forEach(m => {
+                            const t = new Date(m.timestamp * 1000).toLocaleString('zh-CN');
+                            html += `<div style="font-size:0.85rem;margin:3px 0;"><span style="color:#999;">[${t}]</span> ${escapeHtml(m.content)}</div>`;
+                        });
+                        html += '</div></div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(() => { container.innerHTML = '<p style="color:#e74c3c;">加载失败</p>'; });
+        }
+
+        // ===== 聊天文件搜索 =====
+        function searchChatFiles(nickInputId, resultId) {
+            const nick = document.getElementById(nickInputId).value.trim();
+            const container = document.getElementById(resultId);
+            container.innerHTML = '<p style="color:#999;">加载中...</p>';
+            fetch('/api/query_files?nickname=' + encodeURIComponent(nick))
+                .then(res => res.json())
+                .then(data => {
+                    const groups = data.groups || [];
+                    if (groups.length === 0) {
+                        container.innerHTML = '<p style="color:#999;">没有找到文件</p>';
+                        return;
+                    }
+                    let html = '';
+                    groups.forEach(g => {
+                        html += `<div style="margin-bottom:15px;border:1px solid #eee;border-radius:6px;padding:10px;">
+                            <div style="font-weight:bold;margin-bottom:6px;">
+                                ${escapeHtml(g.avatar || '😀')} ${escapeHtml(g.sender)}
+                                <span style="font-size:0.75rem;color:#999;margin-left:6px;">${g.files.length}个文件</span>
+                            </div>
+                            <div style="max-height:200px;overflow-y:auto;">`;
+                        g.files.forEach(f => {
+                            const t = new Date(f.timestamp * 1000).toLocaleString('zh-CN');
+                            const isImg = f.type === 'image';
+                            const exists = f.file_exists;
+                            if (isImg) {
+                                html += `<div style="margin:4px 0;font-size:0.85rem;">
+                                    <span style="color:#999;">[${t}]</span>
+                                    <img src="${escapeHtml(f.content)}" style="max-width:120px;max-height:80px;border-radius:4px;vertical-align:middle;">
+                                    <span style="color:#666;"> ${escapeHtml(f.file_name || '图片')}</span>
+                                    ${exists ? '' : '<span style="color:#e74c3c;font-size:0.75rem;"> [已删除]</span>'}
+                                </div>`;
+                            } else {
+                                html += `<div style="margin:4px 0;font-size:0.85rem;">
+                                    <span style="color:#999;">[${t}]</span>
+                                    ${exists ? `<a href="${escapeHtml(f.content)}" download style="color:#1a5fb4;">📎 ${escapeHtml(f.file_name || '文件')}</a>` : `<span style="color:#999;text-decoration:line-through;">📎 ${escapeHtml(f.file_name || '文件')}</span>`}
+                                    ${f.file_size ? `<span style="color:#999;font-size:0.75rem;"> (${formatFileSize(f.file_size)})</span>` : ''}
+                                    ${exists ? '' : '<span style="color:#e74c3c;font-size:0.75rem;"> [已删除]</span>'}
+                                </div>`;
+                            }
+                        });
+                        html += '</div></div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(() => { container.innerHTML = '<p style="color:#e74c3c;">加载失败</p>'; });
         }
 
         function escapeHtml(text) {
