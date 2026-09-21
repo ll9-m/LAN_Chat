@@ -159,6 +159,17 @@ class Database:
                     ip         TEXT,
                     created_at REAL
                 );
+                CREATE TABLE IF NOT EXISTS favorites (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id    TEXT NOT NULL,
+                    msg_id     TEXT,
+                    msg_type   TEXT,
+                    content    TEXT,
+                    sender     TEXT,
+                    file_name  TEXT,
+                    file_size  INTEGER,
+                    created_at REAL NOT NULL
+                );
             """)
 
             # 旧库升级：为消息表补文件消息字段（列不存在时追加）
@@ -395,6 +406,31 @@ class Database:
         rows = self._query('SELECT device_id, nickname, ip, created_at FROM blacklist '
                            'ORDER BY created_at DESC')
         return [dict(r) for r in rows]
+
+    # ========== 收藏夹 ==========
+
+    def add_favorite(self, user_id, msg):
+        """收藏一条消息"""
+        with self._lock, self._conn:
+            self._conn.execute(
+                'INSERT INTO favorites(user_id, msg_id, msg_type, content, sender, '
+                'file_name, file_size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (user_id, msg.get('id'), msg.get('type'), msg.get('content'),
+                 msg.get('sender'), msg.get('file_name'), msg.get('file_size'), time.time()))
+
+    def get_favorites(self, user_id):
+        """获取用户收藏列表（按类型分组，最新在前）"""
+        rows = self._query(
+            'SELECT id, msg_id, msg_type, content, sender, file_name, file_size, created_at '
+            'FROM favorites WHERE user_id = ? ORDER BY created_at DESC', (user_id,))
+        return [dict(r) for r in rows]
+
+    def remove_favorite(self, user_id, fav_id):
+        """删除一条收藏"""
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                'DELETE FROM favorites WHERE id = ? AND user_id = ?', (fav_id, user_id))
+            return cur.rowcount > 0
 
     def cleanup_old_messages(self, max_history):
         """清理旧消息，保留最近 max_history 条"""
@@ -1129,6 +1165,15 @@ def api_query_files():
     return jsonify({'groups': groups})
 
 
+@app.route('/api/file_exists')
+def api_file_exists():
+    """检查文件是否存在于 uploads 目录"""
+    url = request.args.get('url', '')
+    filename = os.path.basename(url)
+    exists = os.path.isfile(os.path.join(UPLOAD_FOLDER, filename))
+    return jsonify({'exists': exists})
+
+
 # ---------- 管理员 API ----------
 @app.route('/api/admin/set_room_name', methods=['POST'])
 def api_admin_set_room_name():
@@ -1195,6 +1240,40 @@ def api_recall_message():
     data = request.get_json(silent=True) or {}
     result, status = room.recall_message(data.get('user_id'), data.get('message_id'))
     return jsonify(result), status
+
+
+@app.route('/api/favorites/add', methods=['POST'])
+def api_favorites_add():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    msg_id = data.get('message_id')
+    if not user_id or not msg_id:
+        return jsonify({'error': '参数不完整'}), 400
+    msg = room.db.get_message_by_id(msg_id)
+    if not msg:
+        return jsonify({'error': '消息不存在'}), 404
+    room.db.add_favorite(user_id, dict(msg))
+    return jsonify({'success': True}), 200
+
+
+@app.route('/api/favorites/list', methods=['GET'])
+def api_favorites_list():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'error': '缺少 user_id'}), 400
+    items = room.db.get_favorites(user_id)
+    return jsonify({'items': items}), 200
+
+
+@app.route('/api/favorites/remove', methods=['POST'])
+def api_favorites_remove():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    fav_id = data.get('fav_id')
+    if not user_id or not fav_id:
+        return jsonify({'error': '参数不完整'}), 400
+    ok = room.db.remove_favorite(user_id, fav_id)
+    return jsonify({'success': ok}), 200 if ok else 404
 
 
 @app.route('/api/admin/set_recall_time_limit', methods=['POST'])

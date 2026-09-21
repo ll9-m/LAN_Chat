@@ -6,7 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ room_name }} - 在线匿名聊天室</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -19,45 +23,79 @@
 
         /* ===== 加入遮罩 ===== */
         #join-overlay {
-            position: fixed; inset: 0;
-            background: rgba(0,0,0,0.35);
-            display: flex; align-items: center; justify-content: center;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             z-index: 1000;
             backdrop-filter: blur(4px);
         }
+
         .join-box {
             background: #fff;
             padding: 40px 36px 32px;
             border-radius: 12px;
-            width: 90%; max-width: 380px;
+            width: 90%;
+            max-width: 380px;
             text-align: center;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
         }
+
         .join-box h2 {
-            font-size: 1.2rem; font-weight: 600; margin-bottom: 24px; color: #333;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            color: #333;
         }
+
         .join-box input {
-            width: 100%; padding: 10px 14px;
+            width: 100%;
+            padding: 10px 14px;
             margin-bottom: 14px;
-            border: 1px solid #dcdfe6; border-radius: 6px;
-            font-size: 0.95rem; outline: none; transition: border-color .2s;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color .2s;
         }
-        .join-box input:focus { border-color: #12b7f5; }
+
+        .join-box input:focus {
+            border-color: #12b7f5;
+        }
+
         .join-box button {
-            width: 100%; padding: 11px;
-            background: #12b7f5; color: #fff;
-            border: none; border-radius: 6px;
-            cursor: pointer; font-size: 0.95rem; font-weight: 500;
+            width: 100%;
+            padding: 11px;
+            background: #12b7f5;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
             transition: background .2s;
         }
-        .join-box button:hover { background: #0ea5e0; }
-        .error-msg { color: #f56c6c; margin-top: 10px; font-size: 0.85rem; }
+
+        .join-box button:hover {
+            background: #0ea5e0;
+        }
+
+        .error-msg {
+            color: #f56c6c;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
 
         /* ===== 聊天容器 ===== */
         #chat-container {
-            display: flex; flex-direction: column;
-            height: 100%; max-width: 900px;
-            margin: 0 auto; width: 100%;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
             background: #f5f5f5;
         }
 
@@ -65,28 +103,48 @@
         .chat-header {
             background: #fff;
             padding: 0 20px;
-            height: 56px; min-height: 56px;
-            display: flex; justify-content: space-between; align-items: center;
+            height: 56px;
+            min-height: 56px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             border-bottom: 1px solid #e8e8e8;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         }
+
         .room-title {
-            font-size: 1.05rem; font-weight: 600; color: #333;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #333;
         }
-        #online-info { font-size: 0.8rem; color: #999; }
+
+        #online-info {
+            font-size: 0.8rem;
+            color: #999;
+        }
+
         .chat-header button {
-            padding: 5px 14px; border-radius: 4px; border: none;
-            cursor: pointer; font-size: 0.8rem; font-weight: 500;
+            padding: 5px 14px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
             transition: opacity .2s;
         }
-        .chat-header button:hover { opacity: 0.85; }
+
+        .chat-header button:hover {
+            opacity: 0.85;
+        }
 
         /* ===== 消息区域 ===== */
         .messages {
-            flex: 1; overflow-y: auto;
+            flex: 1;
+            overflow-y: auto;
             padding: 16px 20px;
             background: #f5f5f5;
-            display: flex; flex-direction: column;
+            display: flex;
+            flex-direction: column;
         }
 
         .message {
@@ -95,34 +153,65 @@
             max-width: 75%;
             animation: fadeIn .2s ease;
         }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
 
         .message.self {
             align-self: flex-end;
             flex-direction: row-reverse;
         }
+
         .message.other {
             align-self: flex-start;
             flex-direction: row;
         }
 
         .message .avatar-box {
-            width: 38px; height: 38px; min-width: 38px;
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
             border-radius: 6px;
-            display: flex; align-items: center; justify-content: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 1.3rem;
             background: #e8e8e8;
             margin: 0 8px;
         }
-        .message.self .avatar-box { background: #dcf8c6; }
-        .message.other .avatar-box { background: #e8e8e8; }
 
-        .message .msg-body { display: flex; flex-direction: column; }
-        .message .sender-line {
-            font-size: 0.75rem; color: #999;
-            margin-bottom: 3px; padding: 0 2px;
+        .message.self .avatar-box {
+            background: #dcf8c6;
         }
-        .message.self .sender-line { text-align: right; }
+
+        .message.other .avatar-box {
+            background: #e8e8e8;
+        }
+
+        .message .msg-body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message .sender-line {
+            font-size: 0.75rem;
+            color: #999;
+            margin-bottom: 3px;
+            padding: 0 2px;
+        }
+
+        .message.self .sender-line {
+            text-align: right;
+        }
 
         .message .bubble {
             padding: 8px 14px;
@@ -132,82 +221,148 @@
             line-height: 1.45;
             position: relative;
             background: #fff;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
         }
+
         .message.self .bubble {
             background: #95ec69;
             border-top-right-radius: 2px;
         }
+
         .message.other .bubble {
             background: #fff;
             border-top-left-radius: 2px;
         }
 
         .message .bubble a.file-link {
-            color: #12b7f5; word-break: break-all; text-decoration: none;
+            color: #12b7f5;
+            word-break: break-all;
+            text-decoration: none;
         }
-        .message .bubble a.file-link:hover { text-decoration: underline; }
+
+        .message .bubble a.file-link:hover {
+            text-decoration: underline;
+        }
 
         .message .time {
-            font-size: 0.7rem; color: #bbb;
-            margin-top: 3px; padding: 0 2px;
+            font-size: 0.7rem;
+            color: #bbb;
+            margin-top: 3px;
+            padding: 0 2px;
         }
-        .message.self .time { text-align: right; }
 
-        .msg-actions { margin-left: 6px; }
-        .msg-actions button {
-            padding: 1px 6px; font-size: 0.7rem;
-            border: none; border-radius: 3px; cursor: pointer;
-            opacity: 0.7; transition: opacity .15s;
+        .message.self .time {
+            text-align: right;
         }
-        .msg-actions button:hover { opacity: 1; }
+
+        .msg-actions {
+            margin-left: 6px;
+        }
+
+        .msg-actions button {
+            padding: 1px 6px;
+            font-size: 0.7rem;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity .15s;
+        }
+
+        .msg-actions button:hover {
+            opacity: 1;
+        }
 
         .system-msg {
-            text-align: center; color: #bbb;
-            margin: 12px 0; font-size: 0.78rem;
-            display: flex; align-items: center; justify-content: center;
+            text-align: center;
+            color: #bbb;
+            margin: 12px 0;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .system-msg::before, .system-msg::after {
-            content: ''; flex: 1; max-width: 60px;
-            height: 1px; background: #ddd; margin: 0 10px;
+
+        .system-msg::before,
+        .system-msg::after {
+            content: '';
+            flex: 1;
+            max-width: 60px;
+            height: 1px;
+            background: #ddd;
+            margin: 0 10px;
         }
 
         /* ===== 输入区域 ===== */
         .input-area {
-            display: flex; align-items: flex-end;
+            display: flex;
+            align-items: flex-end;
             padding: 12px 16px;
             background: #f5f5f5;
             border-top: 1px solid #e8e8e8;
             gap: 8px;
         }
+
         .input-area textarea {
-            flex: 1; padding: 10px 14px;
-            border: 1px solid #dcdfe6; border-radius: 8px;
-            resize: none; height: 42px; min-height: 42px;
-            font-size: 0.9rem; outline: none;
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            resize: none;
+            height: 42px;
+            min-height: 42px;
+            font-size: 0.9rem;
+            outline: none;
             font-family: inherit;
             transition: border-color .2s;
             line-height: 1.4;
         }
-        .input-area textarea:focus { border-color: #12b7f5; }
+
+        .input-area textarea:focus {
+            border-color: #12b7f5;
+        }
+
         .input-area button {
-            width: 42px; height: 42px; min-width: 42px;
-            padding: 0; border: none; border-radius: 8px;
-            cursor: pointer; font-size: 1.15rem;
-            display: flex; align-items: center; justify-content: center;
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.15rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             transition: background .15s, transform .1s;
         }
-        .input-area button:active { transform: scale(0.92); }
-        #send-btn {
-            background: #12b7f5; color: #fff; width: auto;
-            padding: 0 20px; font-size: 0.9rem; font-weight: 500;
+
+        .input-area button:active {
+            transform: scale(0.92);
         }
-        #send-btn:hover { background: #0ea5e0; }
+
+        #send-btn {
+            background: #12b7f5;
+            color: #fff;
+            width: auto;
+            padding: 0 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        #send-btn:hover {
+            background: #0ea5e0;
+        }
+
         #file-btn {
-            background: #fff; color: #666;
+            background: #fff;
+            color: #666;
             border: 1px solid #dcdfe6 !important;
         }
-        #file-btn:hover { background: #f0f0f0; }
+
+        #file-btn:hover {
+            background: #f0f0f0;
+        }
 
         /* ===== 管理/更多面板通用 ===== */
         #more-panel {
@@ -215,139 +370,329 @@
         }
 
         /* ===== 下拉菜单 ===== */
-        .dropdown-wrap { position: relative; display: inline-block; }
+        .dropdown-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
         .dropdown-menu {
             display: none;
-            position: absolute; top: 100%; left: 0;
+            position: absolute;
+            top: 100%;
+            left: 0;
             margin-top: 6px;
-            background: #fff; border-radius: 8px;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.15);
-            z-index: 500; overflow: hidden;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+            z-index: 500;
+            overflow: hidden;
             animation: dropIn .15s ease;
         }
-        .dropdown-menu.open { display: block; }
-        @keyframes dropIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-        .dropdown-menu .menu-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 14px; border-bottom: 1px solid #f0f0f0;
-        }
-        .dropdown-menu .menu-header h3 { font-size: 0.95rem; font-weight: 600; margin: 0; }
-        .dropdown-menu .menu-header .close-btn {
-            cursor: pointer; color: #999; font-size: 1.1rem;
-            width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-            border-radius: 4px; transition: background .15s;
-        }
-        .dropdown-menu .menu-header .close-btn:hover { background: #f0f0f0; }
-        .dropdown-menu .menu-body {
-            padding: 10px 14px; overflow-y: auto;
-        }
-        #admin-dropdown { width: 380px; max-height: 70vh; }
-        #admin-dropdown .menu-body { max-height: calc(70vh - 44px); }
-        #more-dropdown { width: 400px; max-height: 65vh; }
-        #more-dropdown .menu-body { max-height: calc(65vh - 44px); }
-        @keyframes panelIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
-        #admin-dropdown h3, #more-dropdown h3 {
-            font-size: 1rem; font-weight: 600; margin-bottom: 14px;
-            padding-bottom: 10px; border-bottom: 1px solid #f0f0f0;
+        .dropdown-menu.open {
+            display: block;
         }
-        #close-admin-panel, #close-more-panel {
-            float: right; cursor: pointer; font-size: 1.1rem; color: #999;
-            width: 24px; height: 24px; display: flex; align-items: center;
-            justify-content: center; border-radius: 4px; transition: background .15s;
+
+        @keyframes dropIn {
+            from {
+                opacity: 0;
+                transform: translateY(-6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
         }
-        #close-admin-panel:hover, #close-more-panel:hover { background: #f0f0f0; }
+
+        .dropdown-menu .menu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .dropdown-menu .menu-header h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .dropdown-menu .menu-header .close-btn {
+            cursor: pointer;
+            color: #999;
+            font-size: 1.1rem;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background .15s;
+        }
+
+        .dropdown-menu .menu-header .close-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .dropdown-menu .menu-body {
+            padding: 10px 14px;
+            overflow-y: auto;
+        }
+
+        #admin-dropdown {
+            width: 380px;
+            max-height: 70vh;
+        }
+
+        #admin-dropdown .menu-body {
+            max-height: calc(70vh - 44px);
+        }
+
+        #more-dropdown {
+            width: 400px;
+            max-height: 65vh;
+        }
+
+        #more-dropdown .menu-body {
+            max-height: calc(65vh - 44px);
+        }
+
+        @keyframes panelIn {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        #admin-dropdown h3,
+        #more-dropdown h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        #close-admin-panel,
+        #close-more-panel {
+            float: right;
+            cursor: pointer;
+            font-size: 1.1rem;
+            color: #999;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background .15s;
+        }
+
+        #close-admin-panel:hover,
+        #close-more-panel:hover {
+            background: #f0f0f0;
+        }
 
         .admin-section {
             margin-bottom: 16px;
         }
+
         .admin-section h4 {
-            font-size: 0.85rem; font-weight: 600; color: #666;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #666;
             margin-bottom: 8px;
         }
+
         .admin-section input[type="text"],
         .admin-section input[type="number"] {
-            width: 100%; padding: 7px 10px;
-            border: 1px solid #dcdfe6; border-radius: 5px;
-            font-size: 0.85rem; outline: none; margin-bottom: 6px;
+            width: 100%;
+            padding: 7px 10px;
+            border: 1px solid #dcdfe6;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            outline: none;
+            margin-bottom: 6px;
             transition: border-color .2s;
         }
-        .admin-section input:focus { border-color: #12b7f5; }
+
+        .admin-section input:focus {
+            border-color: #12b7f5;
+        }
+
         .admin-section button {
-            padding: 6px 14px; border: none; border-radius: 5px;
-            cursor: pointer; font-size: 0.8rem; font-weight: 500;
+            padding: 6px 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
             transition: opacity .15s;
         }
-        .admin-section button:hover { opacity: 0.85; }
+
+        .admin-section button:hover {
+            opacity: 0.85;
+        }
+
         .admin-section hr {
-            border: none; border-top: 1px solid #f0f0f0; margin: 10px 0;
+            border: none;
+            border-top: 1px solid #f0f0f0;
+            margin: 10px 0;
         }
 
         .admin-user-item {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 7px 0; border-bottom: 1px solid #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid #f5f5f5;
             font-size: 0.85rem;
         }
-        .admin-user-item:last-child { border-bottom: none; }
-        .mute-btn, .kick-btn {
-            padding: 3px 10px; border-radius: 4px; border: none;
-            cursor: pointer; font-size: 0.78rem; font-weight: 500;
+
+        .admin-user-item:last-child {
+            border-bottom: none;
+        }
+
+        .mute-btn,
+        .kick-btn {
+            padding: 3px 10px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 500;
             transition: opacity .15s;
         }
-        .mute-btn:hover, .kick-btn:hover { opacity: 0.8; }
+
+        .mute-btn:hover,
+        .kick-btn:hover {
+            opacity: 0.8;
+        }
 
         /* ===== 更多/管理 面板 Tab ===== */
-        .more-tab, .admin-tab {
-            flex: 1; padding: 7px; border-radius: 5px;
-            cursor: pointer; font-size: 0.85rem; font-weight: 500;
+        .more-tab,
+        .admin-tab {
+            flex: 1;
+            padding: 7px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
             transition: all .15s;
         }
-        .more-tab-content, .admin-tab-content { margin-top: 10px; }
+
+        .more-tab-content,
+        .admin-tab-content {
+            margin-top: 10px;
+        }
 
         /* ===== 滚动条美化 ===== */
         .messages::-webkit-scrollbar,
         #admin-panel-content::-webkit-scrollbar,
-        .menu-body::-webkit-scrollbar { width: 5px; }
+        .menu-body::-webkit-scrollbar {
+            width: 5px;
+        }
+
         #admin-panel-content::-webkit-scrollbar-thumb,
         .menu-body::-webkit-scrollbar-thumb {
-            background: #ccc; border-radius: 3px;
+            background: #ccc;
+            border-radius: 3px;
         }
+
         .messages::-webkit-scrollbar-track,
         #admin-panel-content::-webkit-scrollbar-track,
-        .menu-body::-webkit-scrollbar-track { background: transparent; }
+        .menu-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
 
         /* ===== 图片 Lightbox ===== */
         .img-bubble {
-            max-width: 200px; border-radius: 6px; cursor: pointer;
+            max-width: 200px;
+            border-radius: 6px;
+            cursor: pointer;
             transition: transform .15s;
         }
-        .img-bubble:hover { transform: scale(1.03); }
+
+        .img-bubble:hover {
+            transform: scale(1.03);
+        }
+
         #image-lightbox {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.85);
-            z-index: 2000; justify-content: center; align-items: center;
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
             backdrop-filter: blur(6px);
         }
-        #image-lightbox.active { display: flex; }
+
+        #image-lightbox.active {
+            display: flex;
+        }
+
         #lightbox-img {
-            max-width: 90vw; max-height: 85vh; border-radius: 8px;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+            max-width: 90vw;
+            max-height: 85vh;
+            border-radius: 8px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
             cursor: zoom-out;
         }
+
         #lightbox-close {
-            position: absolute; top: 16px; right: 20px;
-            color: #fff; font-size: 2rem; cursor: pointer;
-            width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
-            border-radius: 50%; background: rgba(255,255,255,0.15); transition: background .15s;
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            color: #fff;
+            font-size: 2rem;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            transition: background .15s;
         }
-        #lightbox-close:hover { background: rgba(255,255,255,0.3); }
+
+        #lightbox-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
         #lightbox-download {
-            position: absolute; bottom: 20px; right: 20px;
-            color: #fff; font-size: 0.9rem; text-decoration: none;
-            padding: 8px 18px; border-radius: 6px;
-            background: rgba(255,255,255,0.2); transition: background .15s;
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 0.9rem;
+            text-decoration: none;
+            padding: 8px 18px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            transition: background .15s;
         }
-        #lightbox-download:hover { background: rgba(255,255,255,0.35); }
+
+        #lightbox-download:hover {
+            background: rgba(255, 255, 255, 0.35);
+        }
+
+        /* ===== 右键菜单 ===== */
+        #msg-context-menu .ctx-item:hover {
+            background: #f5f5f5;
+        }
+
+        #msg-context-menu .ctx-item:last-child {
+            border-top: 1px solid #f0f0f0;
+        }
     </style>
 </head>
 
@@ -378,10 +723,16 @@
                             <span id="close-admin-panel" class="close-btn">&times;</span>
                         </div>
                         <div class="menu-body">
-                            <div style="display:flex; gap:6px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
-                                <button id="admin-tab-settings" class="admin-tab active" style="flex:1;padding:6px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">房间设置</button>
-                                <button id="admin-tab-users" class="admin-tab" style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">用户管理</button>
-                                <button id="admin-tab-query" class="admin-tab" style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">数据查询</button>
+                            <div
+                                style="display:flex; gap:6px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
+                                <button id="admin-tab-settings" class="admin-tab active"
+                                    style="flex:1;padding:6px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">房间设置</button>
+                                <button id="admin-tab-users" class="admin-tab"
+                                    style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">用户管理</button>
+                                <button id="admin-tab-query" class="admin-tab"
+                                    style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">数据查询</button>
+                                <button id="admin-tab-fav" class="admin-tab"
+                                    style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">收藏夹</button>
                             </div>
                             <div id="admin-tab-content-settings" class="admin-tab-content">
                                 <div class="admin-section">
@@ -402,22 +753,26 @@
                                 </div>
                                 <div class="admin-section">
                                     <h4>文件大小上限</h4>
-                                    <input type="number" id="file-limit-input" min="0" step="1" placeholder="单文件大小上限 MB（0 = 不限）">
+                                    <input type="number" id="file-limit-input" min="0" step="1"
+                                        placeholder="单文件大小上限 MB（0 = 不限）">
                                     <button id="set-file-limit-btn">保存限额</button>
                                 </div>
                                 <div class="admin-section">
                                     <h4>保留消息条数</h4>
-                                    <input type="number" id="max-history-input" min="10" step="10" placeholder="保留消息条数（默认200）">
+                                    <input type="number" id="max-history-input" min="10" step="10"
+                                        placeholder="保留消息条数（默认200）">
                                     <button id="set-max-history-btn">保存条数</button>
                                 </div>
                                 <div class="admin-section">
                                     <h4>撤回时限</h4>
-                                    <input type="number" id="recall-time-input" min="0" step="30" placeholder="撤回时限秒数（0=不允许撤回）">
+                                    <input type="number" id="recall-time-input" min="0" step="30"
+                                        placeholder="撤回时限秒数（0=不允许撤回）">
                                     <button id="set-recall-time-btn">保存时限</button>
                                 </div>
                                 <div class="admin-section">
                                     <button id="clear-history-btn" style="background:#f56c6c;">清空聊天记录</button>
-                                    <button id="factory-reset-btn" style="background:#f56c6c; margin-left:6px;">恢复出厂设置</button>
+                                    <button id="factory-reset-btn"
+                                        style="background:#f56c6c; margin-left:6px;">恢复出厂设置</button>
                                 </div>
                             </div>
                             <div id="admin-tab-content-users" class="admin-tab-content" style="display:none;">
@@ -450,18 +805,29 @@
                                 <div class="admin-section">
                                     <h4>聊天记录查询</h4>
                                     <div style="margin-bottom:8px;">
-                                        <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                        <button id="admin-history-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                                        <input type="text" id="admin-history-nick" placeholder="输入昵称搜索..."
+                                            style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                        <button id="admin-history-search-btn"
+                                            style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                                     </div>
                                     <div id="admin-history-results"></div>
                                 </div>
                                 <div class="admin-section">
                                     <h4>聊天文件查询</h4>
                                     <div style="margin-bottom:8px;">
-                                        <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                        <button id="admin-files-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                                        <input type="text" id="admin-files-nick" placeholder="输入昵称搜索..."
+                                            style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                        <button id="admin-files-search-btn"
+                                            style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                                     </div>
                                     <div id="admin-files-results"></div>
+                                </div>
+                            </div>
+                            <div id="admin-tab-content-fav" class="admin-tab-content" style="display:none;">
+                                <div class="admin-section">
+                                    <h4>我的收藏</h4>
+                                    <button id="admin-load-fav-btn" style="margin-bottom:8px;">刷新收藏</button>
+                                    <div id="admin-fav-results"></div>
                                 </div>
                             </div>
                         </div>
@@ -477,23 +843,39 @@
                             <span id="close-more-panel" class="close-btn">&times;</span>
                         </div>
                         <div class="menu-body">
-                            <div style="display:flex; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
-                                <button id="tab-chat-history" class="more-tab active" style="flex:1;padding:7px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天记录</button>
-                                <button id="tab-chat-files" class="more-tab" style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天文件</button>
+                            <div
+                                style="display:flex; gap:8px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
+                                <button id="tab-chat-history" class="more-tab active"
+                                    style="flex:1;padding:7px;border:1px solid #12b7f5;background:#12b7f5;color:white;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天记录</button>
+                                <button id="tab-chat-files" class="more-tab"
+                                    style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">聊天文件</button>
+                                <button id="tab-favorites" class="more-tab"
+                                    style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">收藏夹</button>
                             </div>
                             <div id="more-tab-chat-history" class="more-tab-content">
                                 <div style="margin-bottom:10px;">
-                                    <input type="text" id="history-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                    <button id="history-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                                    <input type="text" id="history-search-nick" placeholder="输入昵称搜索..."
+                                        style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                    <button id="history-search-btn"
+                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                                 </div>
                                 <div id="history-results"></div>
                             </div>
                             <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
                                 <div style="margin-bottom:10px;">
-                                    <input type="text" id="files-search-nick" placeholder="输入昵称搜索..." style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
-                                    <button id="files-search-btn" style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
+                                    <input type="text" id="files-search-nick" placeholder="输入昵称搜索..."
+                                        style="width:calc(100% - 70px);padding:7px 10px;border:1px solid #dcdfe6;border-radius:5px;font-size:0.85rem;outline:none;">
+                                    <button id="files-search-btn"
+                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">搜索</button>
                                 </div>
                                 <div id="files-results"></div>
+                            </div>
+                            <div id="more-tab-favorites" class="more-tab-content" style="display:none;">
+                                <div style="margin-bottom:10px;">
+                                    <button id="load-fav-btn"
+                                        style="padding:7px 14px;background:#12b7f5;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">刷新收藏</button>
+                                </div>
+                                <div id="fav-results"></div>
                             </div>
                         </div>
                     </div>
@@ -503,7 +885,7 @@
             <div>
                 <span id="online-info">在线：0人</span>
                 <button id="exit-btn"
-                    style="margin-left:10px; background:#f5f5f5; color:#999; border:1px solid #e8e8e8;">退出</button>
+                    style="margin-left:10px; background:#f15c5c; color:#464343; border:1px solid #e8e8e8;">退出</button>
             </div>
         </div>
         <div class="messages" id="messages"></div>
@@ -511,7 +893,9 @@
             <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
             <button id="file-btn" title="发送文件/图片">📎</button>
             <button id="send-btn">发送</button>
-            <input type="file" id="any-file-input" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.mp3,.mp4,.wav,.flac,.py,.js,.html,.css,.json,.xml,.csv" style="display:none;">
+            <input type="file" id="any-file-input"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.mp3,.mp4,.wav,.flac,.py,.js,.html,.css,.json,.xml,.csv"
+                style="display:none;">
         </div>
     </div>
 
@@ -519,6 +903,24 @@
         <span id="lightbox-close">&times;</span>
         <img id="lightbox-img" src="">
         <a id="lightbox-download" href="" download>下载</a>
+    </div>
+
+    <!-- 右键菜单 -->
+    <div id="msg-context-menu" style="display:none; position:fixed; z-index:999;
+            background:#fff; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.18);
+            min-width:120px; overflow:hidden;">
+        <div class="ctx-item" data-action="favorite" style="padding:9px 16px; cursor:pointer; font-size:0.85rem;
+            display:flex; align-items:center; gap:8px; transition:background .12s;">
+            <span>⭐</span><span>收藏</span>
+        </div>
+        <div class="ctx-item" data-action="recall" style="display:none; padding:9px 16px; cursor:pointer; font-size:0.85rem;
+            align-items:center; gap:8px; transition:background .12s; color:#e6a23c;">
+            <span>↩</span><span>撤回</span>
+        </div>
+        <div class="ctx-item" data-action="delete" style="display:none; padding:9px 16px; cursor:pointer; font-size:0.85rem;
+            align-items:center; gap:8px; transition:background .12s; color:#f56c6c;">
+            <span>🗑</span><span>删除</span>
+        </div>
     </div>
 
     <script>
@@ -713,6 +1115,8 @@
                 // Tab 切换
                 document.getElementById('tab-chat-history').addEventListener('click', () => switchMoreTab('chat-history'));
                 document.getElementById('tab-chat-files').addEventListener('click', () => switchMoreTab('chat-files'));
+                document.getElementById('tab-favorites').addEventListener('click', () => { switchMoreTab('favorites'); loadFavorites('fav-results'); });
+                document.getElementById('load-fav-btn').addEventListener('click', () => loadFavorites('fav-results'));
                 // 搜索按钮
                 document.getElementById('history-search-btn').addEventListener('click', () => {
                     searchChatHistory('history-search-nick', 'history-results');
@@ -752,7 +1156,7 @@
             messageInput.value = '';
         }
 
-        const IMAGE_EXTS = new Set(['.jpg','.jpeg','.png','.gif','.bmp','.webp','.svg']);
+        const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg']);
 
         function handleFileUpload() {
             const file = anyFileInput.files[0];
@@ -798,63 +1202,29 @@
             } else {
                 msgDiv.className = 'message ' + (isSelf ? 'self' : 'other');
                 msgDiv.dataset.msgId = msg.id;
+                // 存储消息数据供右键菜单使用
+                msgDiv.dataset.msgType = msg.type || '';
+                msgDiv.dataset.msgContent = msg.content || '';
+                msgDiv.dataset.msgSender = msg.sender || '';
+                msgDiv.dataset.msgFileName = msg.file_name || '';
+                msgDiv.dataset.msgFileSize = msg.file_size || '';
+                msgDiv.dataset.msgTimestamp = msg.timestamp || '';
+                msgDiv.dataset.msgIsAdmin = msg.is_admin ? '1' : '0';
                 const avatar = msg.avatar || '😀';
                 let sender = msg.sender;
                 if (msg.is_admin) sender += ' (admin)';
                 const time = new Date(msg.timestamp * 1000).toLocaleTimeString('zh-CN');
-
-                let actionBtns = '';
-                if (isAdmin && !isHistory) {
-                    actionBtns += `<button class="msg-delete-btn" data-id="${msg.id}" title="删除" style="background:#f56c6c;color:white;">删除</button>`;
-                } else if (isSelf && !isHistory) {
-                    const elapsed = (Date.now() / 1000) - msg.timestamp;
-                    if (elapsed < 300) {
-                        actionBtns += `<button class="msg-recall-btn" data-id="${msg.id}" title="撤回" style="background:#e6a23c;color:white;">撤回</button>`;
-                    }
-                }
 
                 const senderLine = isSelf ? '' : `<div class="sender-line">${escapeHtml(sender)}</div>`;
                 msgDiv.innerHTML = `
                     <div class="avatar-box">${avatar}</div>
                     <div class="msg-body">
                         ${senderLine}
-                        <div class="bubble">${renderBubbleContent(msg)}<span class="msg-actions">${actionBtns}</span></div>
+                        <div class="bubble">${renderBubbleContent(msg)}</div>
                         <div class="time">${time}</div>
                     </div>`;
             }
             messagesDiv.appendChild(msgDiv);
-
-            // 绑定删除按钮事件
-            const deleteBtn = msgDiv.querySelector('.msg-delete-btn');
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', () => {
-                    if (confirm('确定删除此消息？')) {
-                        fetch('/api/admin/delete_message', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ user_id: userId, message_id: deleteBtn.dataset.id })
-                        }).then(res => res.json()).then(d => {
-                            if (!d.success) alert(d.error);
-                        });
-                    }
-                });
-            }
-
-            // 绑定撤回按钮事件
-            const recallBtn = msgDiv.querySelector('.msg-recall-btn');
-            if (recallBtn) {
-                recallBtn.addEventListener('click', () => {
-                    if (confirm('确定撤回此消息？')) {
-                        fetch('/api/recall_message', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ user_id: userId, message_id: recallBtn.dataset.id })
-                        }).then(res => res.json()).then(d => {
-                            if (!d.success) alert(d.error);
-                        });
-                    }
-                });
-            }
 
             if (!isHistory) {
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -905,6 +1275,89 @@
             document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('active'); });
         })();
 
+        // ===== 右键菜单 =====
+        (function initContextMenu() {
+            const menu = document.getElementById('msg-context-menu');
+            const ctxFavorite = menu.querySelector('[data-action="favorite"]');
+            const ctxRecall = menu.querySelector('[data-action="recall"]');
+            const ctxDelete = menu.querySelector('[data-action="delete"]');
+            let currentMsgDiv = null;
+
+            // 右键点击消息气泡
+            messagesDiv.addEventListener('contextmenu', (e) => {
+                const msgDiv = e.target.closest('.message');
+                if (!msgDiv || !msgDiv.dataset.msgId) return;
+                e.preventDefault();
+                currentMsgDiv = msgDiv;
+                const msgType = msgDiv.dataset.msgType;
+                const isSelf = (msgDiv.dataset.msgSender === nickname);
+                const msgIsAdm = msgDiv.dataset.msgIsAdmin === '1';
+                const elapsed = (Date.now() / 1000) - parseFloat(msgDiv.dataset.msgTimestamp || 0);
+
+                // 收藏：所有类型都可以
+                ctxFavorite.style.display = 'flex';
+                // 撤回：仅自己的消息且在时限内
+                ctxRecall.style.display = (isSelf && elapsed < 300) ? 'flex' : 'none';
+                // 删除：仅管理员
+                ctxDelete.style.display = isAdmin ? 'flex' : 'none';
+
+                // 定位菜单
+                let x = e.clientX, y = e.clientY;
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+                menu.style.display = 'block';
+                // 边界修正
+                const rect = menu.getBoundingClientRect();
+                if (rect.right > window.innerWidth) menu.style.left = (x - rect.width) + 'px';
+                if (rect.bottom > window.innerHeight) menu.style.top = (y - rect.height) + 'px';
+            });
+
+            // 关闭菜单
+            document.addEventListener('click', () => { menu.style.display = 'none'; });
+            document.addEventListener('contextmenu', (e) => {
+                if (!e.target.closest('.message')) menu.style.display = 'none';
+            });
+
+            // 收藏
+            ctxFavorite.addEventListener('click', () => {
+                if (!currentMsgDiv) return;
+                const msgId = currentMsgDiv.dataset.msgId;
+                fetch('/api/favorites/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, message_id: msgId })
+                }).then(r => r.json()).then(d => {
+                    if (d.success) alert('已收藏');
+                    else alert(d.error || '收藏失败');
+                });
+                menu.style.display = 'none';
+            });
+
+            // 撤回
+            ctxRecall.addEventListener('click', () => {
+                if (!currentMsgDiv) return;
+                if (!confirm('确定撤回此消息？')) return;
+                fetch('/api/recall_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, message_id: currentMsgDiv.dataset.msgId })
+                }).then(r => r.json()).then(d => { if (!d.success) alert(d.error); });
+                menu.style.display = 'none';
+            });
+
+            // 删除
+            ctxDelete.addEventListener('click', () => {
+                if (!currentMsgDiv) return;
+                if (!confirm('确定删除此消息？')) return;
+                fetch('/api/admin/delete_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, message_id: currentMsgDiv.dataset.msgId })
+                }).then(r => r.json()).then(d => { if (!d.success) alert(d.error); });
+                menu.style.display = 'none';
+            });
+        })();
+
         function updateOnlineUsers(data) {
             const total = (data.users?.length || 0) + (data.admin_users?.length || 0);
             onlineInfo.textContent = `在线：${total}人`;
@@ -932,8 +1385,10 @@
                     switchAdminTab(tab);
                     if (tab === 'users') { loadAdminUsers(); loadBlacklist(); loadMutedUsers(); }
                     if (tab === 'query') { loadStats(); loadAuditLog(); searchChatHistory('admin-history-nick', 'admin-history-results'); searchChatFiles('admin-files-nick', 'admin-files-results'); }
+                    if (tab === 'fav') { loadFavorites('admin-fav-results'); }
                 });
             });
+            document.getElementById('admin-load-fav-btn').addEventListener('click', () => loadFavorites('admin-fav-results'));
             document.getElementById('refresh-users-btn').addEventListener('click', () => { loadAdminUsers(); loadBlacklist(); loadMutedUsers(); });
             document.getElementById('save-room-name').addEventListener('click', saveRoomName);
             document.getElementById('set-password-btn').addEventListener('click', setPassword);
@@ -1119,7 +1574,7 @@
                 list.innerHTML = data.users.map(u => {
                     // 管理员不显示禁言和踢出按钮
                     const isAdminUser = u.is_admin;
-                    const muteIndicator = (!isAdminUser && u.muted_remaining > 0) 
+                    const muteIndicator = (!isAdminUser && u.muted_remaining > 0)
                         ? `<span style="font-size:0.75rem;color:#e67e22;"> [禁言${u.muted_remaining}秒]</span>` : '';
                     const buttons = isAdminUser ? '' : `
                         <button class="mute-btn" data-id="${u.user_id}">禁言</button>
@@ -1324,6 +1779,82 @@
             if (activeContent) activeContent.style.display = 'block';
         }
 
+        // ===== 收藏夹加载/渲染 =====
+        function loadFavorites(resultId) {
+            const container = document.getElementById(resultId);
+            container.innerHTML = '<p style="color:#999;">加载中...</p>';
+            fetch('/api/favorites/list?user_id=' + encodeURIComponent(userId))
+                .then(r => r.json())
+                .then(data => {
+                    const items = data.items || [];
+                    if (items.length === 0) { container.innerHTML = '<p style="color:#999;">暂无收藏</p>'; return; }
+                    // 按类型分组：图片、文件、文本
+                    const groups = { image: [], file: [], text: [] };
+                    items.forEach(item => {
+                        const t = item.msg_type || 'text';
+                        if (groups[t]) groups[t].push(item); else groups.text.push(item);
+                    });
+                    let html = '';
+                    const typeLabels = { image: '图片', file: '文件', text: '文本' };
+                    for (const [type, list] of Object.entries(groups)) {
+                        if (list.length === 0) continue;
+                        html += `<div style="font-size:0.8rem;color:#999;margin:10px 0 4px;border-bottom:1px solid #f0f0f0;padding-bottom:4px;">${typeLabels[type]} (${list.length})</div>`;
+                        list.forEach(item => {
+                            const time = new Date(item.created_at * 1000).toLocaleString('zh-CN');
+                            const size = item.file_size != null ? formatFileSize(item.file_size) : '';
+                            html += `<div class="fav-item" style="padding:8px 0;border-bottom:1px solid #f5f5f5;font-size:0.85rem;">`;
+                            html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+                            if (type === 'image') {
+                                html += `<span style="color:#12b7f5;cursor:pointer;" onclick="openLightbox('${escapeHtml(item.content)}','${escapeHtml(item.file_name || '图片')}')">🖼 ${escapeHtml(item.file_name || '图片')}</span>`;
+                            } else if (type === 'file') {
+                                html += `<span class="fav-file-link" data-url="${escapeHtml(item.content)}" data-name="${escapeHtml(item.file_name || '文件')}" style="color:#12b7f5;cursor:pointer;">📎 ${escapeHtml(item.file_name || '文件')}</span>`;
+                            } else {
+                                html += `<span style="word-break:break-all;">${escapeHtml(item.content).substring(0, 80)}</span>`;
+                            }
+                            html += `<button class="fav-remove-btn" data-fav-id="${item.id}" style="background:none;border:none;color:#f56c6c;cursor:pointer;font-size:0.75rem;padding:2px 6px;">删除</button>`;
+                            html += `</div>`;
+                            html += `<div style="font-size:0.75rem;color:#999;margin-top:3px;">`;
+                            html += `发送者: ${escapeHtml(item.sender)}`;
+                            if (size) html += ` · ${size}`;
+                            html += ` · ${time}`;
+                            html += `</div></div>`;
+                        });
+                    }
+                    container.innerHTML = html;
+                    // 绑定删除按钮
+                    container.querySelectorAll('.fav-remove-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            if (!confirm('确定删除此收藏？')) return;
+                            fetch('/api/favorites/remove', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ user_id: userId, fav_id: btn.dataset.favId })
+                            }).then(r => r.json()).then(d => {
+                                if (d.success) loadFavorites(resultId);
+                                else alert(d.error || '删除失败');
+                            });
+                        });
+                    });
+                    // 绑定文件下载（先检查文件是否存在）
+                    container.querySelectorAll('.fav-file-link').forEach(link => {
+                        link.addEventListener('click', () => {
+                            const url = link.dataset.url;
+                            const name = link.dataset.name;
+                            fetch('/api/file_exists?url=' + encodeURIComponent(url))
+                                .then(r => r.json())
+                                .then(d => {
+                                    if (d.exists) {
+                                        const a = document.createElement('a');
+                                        a.href = url; a.download = name; a.click();
+                                    } else {
+                                        alert('文件已不存在，无法下载');
+                                    }
+                                });
+                        });
+                    });
+                });
+        }
+
         // ===== 聊天记录搜索 =====
         function searchChatHistory(nickInputId, resultId) {
             const nick = document.getElementById(nickInputId).value.trim();
@@ -1410,7 +1941,7 @@
         // 点击菜单外区域自动关闭下拉菜单
         document.addEventListener('click', (e) => {
             const adminDD = document.getElementById('admin-dropdown');
-            const moreDD  = document.getElementById('more-dropdown');
+            const moreDD = document.getElementById('more-dropdown');
             if (adminDD && adminDD.classList.contains('open') && !e.target.closest('#admin-dropdown') && !e.target.closest('#admin-panel-toggle'))
                 adminDD.classList.remove('open');
             if (moreDD && moreDD.classList.contains('open') && !e.target.closest('#more-dropdown') && !e.target.closest('#more-panel-toggle'))
