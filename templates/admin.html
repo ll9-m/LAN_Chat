@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员 - 在线匿名聊天室</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .qr-img {
+            width: 200px;
+            height: 200px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .qr-img.large {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .status {
+            margin-top: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>房间管理</h2>
+        <img src="/static/qrcode.png" class="qr-img" id="qr-img" alt="二维码">
+        <p>房间名称：{{ room_name }}</p>
+        <div class="status" id="room-status">加载中...</div>
+        <button class="btn" id="toggle-room-btn" disabled>加载中...</button>
+        <a href="/?admin=1" class="btn">进入聊天室（管理员）</a>
+        <p style="margin-top:15px; font-size:0.9rem; color:#555;">管理功能也可在聊天界面中使用</p>
+    </div>
+    <script>
+        document.getElementById('qr-img').addEventListener('click', function () {
+            this.classList.toggle('large');
+        });
+
+        function fetchRoomStatus() {
+            fetch('/api/room_status')
+                .then(res => res.json())
+                .then(data => {
+                    updateRoomStatus(data.open);
+                })
+                .catch(err => {
+                    document.getElementById('room-status').textContent = '获取状态失败';
+                });
+        }
+
+        function updateRoomStatus(open) {
+            const btn = document.getElementById('toggle-room-btn');
+            const status = document.getElementById('room-status');
+            btn.disabled = false;
+            if (open) {
+                status.textContent = '房间当前开放';
+                btn.textContent = '关闭房间';
+            } else {
+                status.textContent = '房间当前关闭';
+                btn.textContent = '打开房间';
+            }
+        }
+
+        document.getElementById('toggle-room-btn').addEventListener('click', function () {
+            fetch('/api/room_status')
+                .then(res => res.json())
+                .then(data => {
+                    const newOpen = !data.open;
+                    fetch('/api/admin/set_room_open', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: 'admin_console', open: newOpen })
+                    })
+                        .then(res => res.json())
+                        .then(result => {
+                            if (result.success) {
+                                updateRoomStatus(result.open);
+                                alert(result.open ? '房间已打开' : '房间已关闭');
+                            } else {
+                                alert('操作失败：' + (result.error || ''));
+                            }
+                        });
+                });
+        });
+
+        fetchRoomStatus();
+    </script>
+</body>
+
+</html>

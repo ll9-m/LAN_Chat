@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ room_name }} - 在线匿名聊天室</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #join-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .join-box {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .join-box input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .join-box button {
+            width: 100%;
+            padding: 10px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .error-msg {
+            color: #e74c3c;
+            margin-top: 10px;
+        }
+
+        #chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            background: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .chat-header {
+            background: #3498db;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #fafafa;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            max-width: 70%;
+        }
+
+        .message.self {
+            align-self: flex-end;
+        }
+
+        .message.other {
+            align-self: flex-start;
+        }
+
+        .message .bubble {
+            padding: 8px 12px;
+            border-radius: 8px;
+            word-wrap: break-word;
+            background: #e0e0e0;
+        }
+
+        .message.self .bubble {
+            background: #d4edda;
+        }
+
+        .message.other .bubble {
+            background: #cce5ff;
+        }
+
+        .system-msg {
+            text-align: center;
+            color: #999;
+            margin: 10px 0;
+        }
+
+        .bubble a.file-link {
+            color: #1a5fb4;
+            word-break: break-all;
+        }
+
+        .input-area {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #ddd;
+        }
+
+        .input-area textarea {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: none;
+            height: 60px;
+        }
+
+        .input-area button {
+            margin-left: 10px;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #admin-panel {
+            display: none;
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            width: 320px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            z-index: 500;
+        }
+
+        .admin-section {
+            margin-bottom: 20px;
+        }
+
+        .admin-user-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .mute-btn,
+        .kick-btn {
+            padding: 4px 8px;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="join-overlay">
+        <div class="join-box">
+            <h2>加入 {{ room_name }}</h2>
+            <input type="text" id="nickname-input" placeholder="输入昵称" maxlength="20"
+                value="{{ 'admin' if is_admin else '' }}" {{ 'readonly' if is_admin else '' }}>
+            <input type="password" id="password-input" placeholder="房间密码（如无密码请留空）"
+                style="display: {{ 'block' if has_password and not is_admin else 'none' }};">
+            <button id="join-btn">进入聊天</button>
+            <div class="error-msg" id="join-error"></div>
+        </div>
+    </div>
+
+    <div id="chat-container" style="display:none;">
+        <div class="chat-header">
+            <div>
+                <span class="room-title" id="room-title">{{ room_name }}</span>
+                {% if is_admin %}
+                <button id="admin-panel-toggle"
+                    style="margin-left:10px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px;">管理</button>
+                {% endif %}
+            </div>
+            <div>
+                <span id="online-info">在线：0人</span>
+                <button id="exit-btn"
+                    style="margin-left:10px; background:#e74c3c; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">退出</button>
+            </div>
+        </div>
+        <div class="messages" id="messages"></div>
+        <div class="input-area">
+            <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
+            <button id="image-btn" title="发送图片">📷</button>
+            <button id="file-btn" title="发送文件">📎</button>
+            <button id="send-btn">发送</button>
+            <input type="file" id="file-input" accept="image/*" style="display:none;">
+            <input type="file" id="any-file-input" style="display:none;">
+        </div>
+    </div>
+
+    {% if is_admin %}
+    <div id="admin-panel">
+        <span id="close-admin-panel" style="float:right;cursor:pointer;">&times;</span>
+        <h3>管理面板</h3>
+        <div class="admin-section">
+            <h4>房间设置</h4>
+            <input type="text" id="room-name-input" placeholder="房间名称" value="{{ room_name }}">
+            <button id="save-room-name">保存名称</button>
+            <hr>
+            <input type="text" id="password-input-admin" placeholder="设置新密码（留空清除）">
+            <button id="set-password-btn">设置密码</button>
+            <button id="clear-password-btn">清除密码</button>
+            <hr>
+            <span id="room-status-text"></span>
+            <hr>
+            <input type="number" id="file-limit-input" min="0" step="1" placeholder="单文件大小上限 MB（0 = 不限）"
+                style="width: 220px;">
+            <button id="set-file-limit-btn">保存限额</button>
+            <hr>
+            <input type="number" id="max-history-input" min="10" step="10" placeholder="保留消息条数（默认200）"
+                style="width: 220px;">
+            <button id="set-max-history-btn">保存条数</button>
+            <hr>
+            <input type="number" id="recall-time-input" min="0" step="30" placeholder="撤回时限秒数（0=不允许撤回）"
+                style="width: 220px;">
+            <button id="set-recall-time-btn">保存时限</button>
+            <hr>
+            <button id="toggle-room-btn">关闭/开启房间</button>
+            <button id="clear-history-btn" style="background:#e74c3c;">清空记录</button>
+        </div>
+        <div class="admin-section">
+            <h4>在线用户</h4>
+            <div id="admin-user-list"></div>
+        </div>
+        <div class="admin-section">
+            <h4>黑名单</h4>
+            <div id="blacklist-container"></div>
+        </div>
+        <div class="admin-section">
+            <h4>数据统计（视图）</h4>
+            <button id="load-stats-btn">刷新统计</button>
+            <div id="stats-container" style="margin-top:10px;"></div>
+        </div>
+        <div class="admin-section">
+            <h4>审计日志（触发器）</h4>
+            <button id="load-audit-btn">刷新日志</button>
+            <div id="audit-container" style="margin-top:10px;"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+
+        // 设备唯一 ID：首次访问生成并永久保存在 localStorage，作为用户身份标识（IP 变化不影响）
+        let deviceId = localStorage.getItem('chat_device_id');
+        if (!deviceId) {
+            deviceId = crypto.randomUUID
+                ? crypto.randomUUID()
+                : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+            localStorage.setItem('chat_device_id', deviceId);
+        }
+
+        let userId = localStorage.getItem('chat_user_id');
+        let nickname = localStorage.getItem('chat_nickname');
+        let fileLimitMb = 0;   // 单文件大小上限（MB），0 = 不限；加入时由服务器下发
+        const isAdmin = {{ 'true' if is_admin else 'false' }};
+        const hasPassword = {{ 'true' if has_password else 'false' }};
+        let eventSource = null;
+
+        const joinOverlay = document.getElementById('join-overlay');
+        const joinError = document.getElementById('join-error');
+        const nicknameInput = document.getElementById('nickname-input');
+        const passwordInput = document.getElementById('password-input');
+        const joinBtn = document.getElementById('join-btn');
+        const chatContainer = document.getElementById('chat-container');
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const imageBtn = document.getElementById('image-btn');
+        const fileInput = document.getElementById('file-input');
+        const onlineInfo = document.getElementById('online-info');
+        const fileBtn = document.getElementById('file-btn');
+        const anyFileInput = document.getElementById('any-file-input');
+
+        async function init() {
+            try {
+                // 按设备 ID 拉取档案，自动回填上次使用的昵称
+                const profileRes = await fetch('/api/get_profile?device_id=' + encodeURIComponent(deviceId));
+                const profileData = await profileRes.json();
+                if (isAdmin) {
+                    nicknameInput.value = 'admin';
+                    nicknameInput.readOnly = true;
+                } else if (profileData.profile) {
+                    nicknameInput.value = profileData.profile.nickname;
+                }
+            } catch (e) {
+                console.error('初始化错误', e);
+            }
+        }
+
+        init();
+
+        joinBtn.addEventListener('click', function () {
+            const nick = nicknameInput.value.trim();
+            // 管理员免密码进入，不收集密码框
+            const password = (hasPassword && !isAdmin) ? passwordInput.value : null;
+            if (!nick) {
+                joinError.textContent = '昵称不能为空';
+                return;
+            }
+            joinChat(nick, password);
+        });
+
+        function joinChat(nick, password) {
+            fetch('/api/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nickname: nick, password: password, user_id: userId, is_admin: isAdmin, device_id: deviceId })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        userId = data.user_id;
+                        nickname = data.nickname;
+                        localStorage.setItem('chat_user_id', userId);
+                        localStorage.setItem('chat_nickname', nickname);
+                        fileLimitMb = data.file_limit_mb || 0;
+                        joinOverlay.style.display = 'none';
+                        if (data.muted_remaining > 0) alert(`您仍处于禁言状态，剩余 ${data.muted_remaining} 秒`);
+                        chatContainer.style.display = 'flex';
+                        if (isAdmin) {
+                            document.getElementById('admin-panel-toggle').style.display = 'inline-block';
+                            initAdminPanel();
+                        }
+                        initChat();
+                    } else {
+                        joinError.textContent = data.error || '加入失败';
+                    }
+                })
+                .catch(err => {
+                    joinError.textContent = '网络错误';
+                });
+        }
+
+        function initChat() {
+            eventSource = new EventSource('/stream');
+            eventSource.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'message') {
+                    appendMessage(data.message);
+                } else if (data.type === 'user_list') {
+                    updateOnlineUsers(data);
+                } else if (data.type === 'history') {
+                    data.messages.forEach(msg => appendMessage(msg, true));
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                } else if (data.type === 'room_name') {
+                    document.getElementById('room-title').textContent = data.name;
+                    const nameInput = document.getElementById('room-name-input');
+                    if (nameInput) nameInput.value = data.name;
+                } else if (data.type === 'user_kicked') {
+                    if (data.user_id === userId) {
+                        alert('您已被管理员移出房间');
+                        eventSource.close();
+                        location.reload();
+                    }
+                } else if (data.type === 'user_muted') {
+                    if (data.user_id === userId) alert(`您已被禁言 ${data.duration} 秒`);
+                } else if (data.type === 'file_limit') {
+                    // 管理员调整了单文件大小上限，实时生效
+                    fileLimitMb = data.limit_mb || 0;
+                } else if (data.type === 'room_closed') {
+                    alert('房间已关闭');
+                    eventSource.close();
+                    location.reload();
+                } else if (data.type === 'password_changed') {
+                    alert('密码已修改，请重新加入');
+                    eventSource.close();
+                    location.reload();
+                } else if (data.type === 'history_cleared') {
+                    // 聊天记录被管理员清空
+                    messagesDiv.innerHTML = '';
+                    alert('聊天记录已被管理员清空');
+                } else if (data.type === 'max_history') {
+                    // 消息保留条数被修改
+                    alert(`消息保留条数已改为 ${data.max_history}`);
+                } else if (data.type === 'message_deleted') {
+                    // 消息被管理员删除
+                    const msgId = data.message_id;
+                    const msgEl = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
+                    if (msgEl) {
+                        msgEl.remove();
+                    } else {
+                        // 通过遍历查找
+                        messagesDiv.querySelectorAll('.message').forEach(el => {
+                            if (el.dataset.msgId === msgId) el.remove();
+                        });
+                    }
+                } else if (data.type === 'message_recalled') {
+                    // 消息被撤回
+                    const msgId = data.message_id;
+                    messagesDiv.querySelectorAll('.message').forEach(el => {
+                        if (el.dataset.msgId === msgId) el.remove();
+                    });
+                    // 插入系统提示
+                    const sysDiv = document.createElement('div');
+                    sysDiv.className = 'system-msg';
+                    sysDiv.textContent = `${data.sender} 撤回了一条消息`;
+                    messagesDiv.appendChild(sysDiv);
+                } else if (data.type === 'recall_time_limit') {
+                    // 撤回时限被修改
+                    alert(`撤回时限已改为 ${data.limit} 秒`);
+                }
+            };
+
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+            });
+            imageBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleImageUpload);
+            fileBtn.addEventListener('click', () => anyFileInput.click());
+            anyFileInput.addEventListener('change', handleFileUpload);
+
+            // 退出按钮：关闭网页
+            document.getElementById('exit-btn').addEventListener('click', () => {
+                if (confirm('确定要退出聊天室吗？')) {
+                    window.close();
+                    // 如果 window.close() 无效（浏览器限制），刷新页面
+                    location.reload();
+                }
+            });
+        }
+
+        function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content) return;
+            fetch('/api/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, content, type: 'text' })
+            }).then(res => res.json()).then(data => { if (!data.success) alert(data.error); });
+            messageInput.value = '';
+        }
+
+        function handleImageUpload() {
+            const file = fileInput.files[0];
+            if (!file) return;
+            uploadAndSend(file, 'image');
+            fileInput.value = '';
+        }
+
+        function handleFileUpload() {
+            const file = anyFileInput.files[0];
+            if (!file) return;
+            if (fileLimitMb > 0 && file.size > fileLimitMb * 1024 * 1024) {
+                alert(`文件超过当前限额 ${fileLimitMb}MB，无法发送`);
+                anyFileInput.value = '';
+                return;
+            }
+            uploadAndSend(file, 'file');
+            anyFileInput.value = '';
+        }
+
+        // 统一上传：图片和普通文件走同一个接口，成功后按类型发出对应消息
+        function uploadAndSend(file, msgType) {
+            const formData = new FormData();
+            formData.append('file', file);
+            fetch('/api/upload_file', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        fetch('/api/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                user_id: userId, content: data.url, type: msgType,
+                                file_name: data.filename
+                            })
+                        }).then(res => res.json()).then(d => { if (!d.success) alert(d.error); });
+                    } else alert(data.error);
+                }).catch(() => alert('上传失败（网络错误或文件过大）'));
+        }
+
+        function appendMessage(msg, isHistory = false) {
+            const isSelf = (msg.user_id === userId);
+            const msgDiv = document.createElement('div');
+            if (msg.type === 'system') {
+                msgDiv.className = 'system-msg';
+                msgDiv.textContent = msg.content;
+            } else {
+                msgDiv.className = 'message ' + (isSelf ? 'self' : 'other');
+                msgDiv.dataset.msgId = msg.id;  // 添加消息ID属性用于删除/撤回
+                const avatar = msg.avatar || '😀';
+                const color = msg.color || '#333';
+                let sender = msg.sender;
+                if (msg.is_admin) sender += ' (admin)';
+                if (isSelf) sender += ' (我)';
+                const time = new Date(msg.timestamp * 1000).toLocaleTimeString('zh-CN');
+
+                // 操作按钮：管理员可删除任意消息，普通用户可撤回自己的消息（限时）
+                let actionBtns = '';
+                if (isAdmin && !isHistory) {
+                    actionBtns += `<button class="msg-delete-btn" data-id="${msg.id}" title="删除此消息" style="margin-left:5px;padding:1px 5px;font-size:0.7rem;background:#e74c3c;color:white;border:none;border-radius:3px;cursor:pointer;">删除</button>`;
+                } else if (isSelf && !isHistory) {
+                    // 检查是否在撤回时限内（5分钟=300秒，这里用本地时间估算）
+                    const elapsed = (Date.now() / 1000) - msg.timestamp;
+                    if (elapsed < 300) {
+                        actionBtns += `<button class="msg-recall-btn" data-id="${msg.id}" title="撤回此消息" style="margin-left:5px;padding:1px 5px;font-size:0.7rem;background:#f39c12;color:white;border:none;border-radius:3px;cursor:pointer;">撤回</button>`;
+                    }
+                }
+
+                msgDiv.innerHTML = `
+                        <div class="sender">${avatar} ${escapeHtml(sender)}<span class="msg-actions">${actionBtns}</span></div>
+                        <div class="bubble" style="background-color:${color}33;">${renderBubbleContent(msg)}</div>
+                        <div class="time" style="font-size:0.7rem;color:#999;">${time}</div>
+                    `;
+            }
+            messagesDiv.appendChild(msgDiv);
+
+            // 绑定删除按钮事件
+            const deleteBtn = msgDiv.querySelector('.msg-delete-btn');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', () => {
+                    if (confirm('确定删除此消息？')) {
+                        fetch('/api/admin/delete_message', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ user_id: userId, message_id: deleteBtn.dataset.id })
+                        }).then(res => res.json()).then(d => {
+                            if (!d.success) alert(d.error);
+                        });
+                    }
+                });
+            }
+
+            // 绑定撤回按钮事件
+            const recallBtn = msgDiv.querySelector('.msg-recall-btn');
+            if (recallBtn) {
+                recallBtn.addEventListener('click', () => {
+                    if (confirm('确定撤回此消息？')) {
+                        fetch('/api/recall_message', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ user_id: userId, message_id: recallBtn.dataset.id })
+                        }).then(res => res.json()).then(d => {
+                            if (!d.success) alert(d.error);
+                        });
+                    }
+                });
+            }
+
+            if (!isHistory) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                saveMessageToLocal(msg);
+            }
+        }
+
+        // 气泡内容：图片内联预览 / 文件显示下载链接+大小 / 其余按文本转义
+        function renderBubbleContent(msg) {
+            if (msg.type === 'image') {
+                return `<img src="${escapeHtml(msg.content)}" style="max-width:200px;">`;
+            }
+            if (msg.type === 'file') {
+                const name = escapeHtml(msg.file_name || '文件');
+                const size = msg.file_size != null ? `（${formatFileSize(msg.file_size)}）` : '';
+                return `📎 <a class="file-link" href="${escapeHtml(msg.content)}" download="${name}">${name}</a>` +
+                    ` <span style="font-size:0.75rem;color:#777;">${size}</span>`;
+            }
+            return escapeHtml(msg.content);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+            if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+            if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return bytes + ' B';
+        }
+
+        function updateOnlineUsers(data) {
+            const total = (data.users?.length || 0) + (data.admin_users?.length || 0);
+            onlineInfo.textContent = `在线：${total}人`;
+        }
+
+        function initAdminPanel() {
+            const toggleBtn = document.getElementById('admin-panel-toggle');
+            const panel = document.getElementById('admin-panel');
+            toggleBtn.addEventListener('click', () => {
+                panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+                if (panel.style.display === 'block') {
+                    loadAdminUsers();
+                    loadBlacklist();
+                    loadFileLimit();
+                    loadMaxHistory();
+                    loadRecallTimeLimit();
+                }
+            });
+            document.getElementById('close-admin-panel').addEventListener('click', () => panel.style.display = 'none');
+            document.getElementById('save-room-name').addEventListener('click', saveRoomName);
+            document.getElementById('set-password-btn').addEventListener('click', setPassword);
+            document.getElementById('clear-password-btn').addEventListener('click', clearPassword);
+            document.getElementById('toggle-room-btn').addEventListener('click', toggleRoomOpen);
+            document.getElementById('set-file-limit-btn').addEventListener('click', setFileLimit);
+            document.getElementById('set-max-history-btn').addEventListener('click', setMaxHistory);
+            document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
+            document.getElementById('set-recall-time-btn').addEventListener('click', setRecallTimeLimit);
+            document.getElementById('load-stats-btn').addEventListener('click', loadStats);
+            document.getElementById('load-audit-btn').addEventListener('click', loadAuditLog);
+        }
+
+        // 打开管理面板时回填当前单文件限额
+        function loadFileLimit() {
+            fetch('/api/room_status').then(res => res.json()).then(data => {
+                fileLimitMb = data.file_limit_mb || 0;
+                document.getElementById('file-limit-input').value = fileLimitMb;
+            });
+        }
+
+        function setFileLimit() {
+            const val = parseInt(document.getElementById('file-limit-input').value, 10);
+            if (isNaN(val) || val < 0) { alert('请输入不小于 0 的整数（0 = 不限制）'); return; }
+            fetch('/api/admin/set_file_limit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, limit_mb: val })
+            }).then(res => res.json()).then(d => {
+                if (d.success) {
+                    fileLimitMb = d.limit_mb;
+                    alert(d.limit_mb > 0 ? `单文件上限已设为 ${d.limit_mb}MB` : '已取消文件大小限制');
+                } else alert(d.error);
+            });
+        }
+
+        function loadMaxHistory() {
+            fetch('/api/room_status').then(res => res.json()).then(data => {
+                document.getElementById('max-history-input').value = data.max_history || 200;
+            });
+        }
+
+        function setMaxHistory() {
+            const val = parseInt(document.getElementById('max-history-input').value, 10);
+            if (isNaN(val) || val < 10) { alert('请输入不小于 10 的整数'); return; }
+            fetch('/api/admin/set_max_history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, max_history: val })
+            }).then(res => res.json()).then(d => {
+                if (d.success) {
+                    alert(`消息保留条数已设为 ${d.max_history}`);
+                } else alert(d.error);
+            });
+        }
+
+        function clearHistory() {
+            if (!confirm('确定要清空所有聊天记录吗？此操作不可恢复！')) return;
+            fetch('/api/admin/clear_history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId })
+            }).then(res => res.json()).then(d => {
+                if (d.success) {
+                    alert('聊天记录已清空');
+                    // 清空页面上的消息
+                    messagesDiv.innerHTML = '';
+                } else alert(d.error);
+            });
+        }
+
+        function loadRecallTimeLimit() {
+            fetch('/api/room_status').then(res => res.json()).then(data => {
+                document.getElementById('recall-time-input').value = data.recall_time_limit || 300;
+            });
+        }
+
+        function setRecallTimeLimit() {
+            const val = parseInt(document.getElementById('recall-time-input').value, 10);
+            if (isNaN(val) || val < 0) { alert('请输入不小于 0 的整数（0 = 不允许撤回）'); return; }
+            fetch('/api/admin/set_recall_time_limit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, limit: val })
+            }).then(res => res.json()).then(d => {
+                if (d.success) {
+                    alert(d.limit > 0 ? `撤回时限已设为 ${d.limit} 秒` : '已禁止撤回消息');
+                } else alert(d.error);
+            });
+        }
+
+        function loadStats() {
+            fetch('/api/admin/message_stats').then(res => res.json()).then(data => {
+                const container = document.getElementById('stats-container');
+                let html = `<p><b>总消息数：</b>${data.total_messages}</p>`;
+
+                // 用户统计
+                html += '<p><b>用户消息统计（视图 v_message_stats）：</b></p>';
+                if (data.user_stats && data.user_stats.length > 0) {
+                    html += '<table border="1" cellpadding="5" style="border-collapse:collapse;font-size:0.85rem;width:100%;">';
+                    html += '<tr style="background:#f0f0f0;"><th>用户</th><th>昵称</th><th>消息数</th><th>首次发言</th><th>最近发言</th></tr>';
+                    data.user_stats.forEach(u => {
+                        const first = u.first_active ? new Date(u.first_active * 1000).toLocaleString('zh-CN') : '-';
+                        const last = u.last_active ? new Date(u.last_active * 1000).toLocaleString('zh-CN') : '-';
+                        html += `<tr><td>${escapeHtml(u.user_id || '-')}</td><td>${escapeHtml(u.sender || '-')}</td><td>${u.message_count}</td><td>${first}</td><td>${last}</td></tr>`;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p style="color:#999;">暂无数据</p>';
+                }
+
+                // 类型统计
+                html += '<p style="margin-top:10px;"><b>消息类型统计（视图 v_message_type_stats）：</b></p>';
+                if (data.type_stats && data.type_stats.length > 0) {
+                    html += '<table border="1" cellpadding="5" style="border-collapse:collapse;font-size:0.85rem;width:100%;">';
+                    html += '<tr style="background:#f0f0f0;"><th>类型</th><th>数量</th><th>占比</th></tr>';
+                    data.type_stats.forEach(t => {
+                        html += `<tr><td>${escapeHtml(t.type)}</td><td>${t.count}</td><td>${t.percentage}%</td></tr>`;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p style="color:#999;">暂无数据</p>';
+                }
+
+                container.innerHTML = html;
+            });
+        }
+
+        function loadAuditLog() {
+            fetch('/api/admin/audit_log?limit=20').then(res => res.json()).then(data => {
+                const container = document.getElementById('audit-container');
+                if (!data.logs || data.logs.length === 0) {
+                    container.innerHTML = '<p style="color:#999;">暂无审计记录</p>';
+                    return;
+                }
+                let html = '<table border="1" cellpadding="5" style="border-collapse:collapse;font-size:0.85rem;width:100%;">';
+                html += '<tr style="background:#f0f0f0;"><th>时间</th><th>操作</th><th>发送者</th><th>内容</th></tr>';
+                data.logs.forEach(log => {
+                    const time = log.deleted_at ? new Date(log.deleted_at * 1000).toLocaleString('zh-CN') : '-';
+                    const content = (log.content || '').substring(0, 30) + ((log.content || '').length > 30 ? '...' : '');
+                    html += `<tr><td>${time}</td><td>${escapeHtml(log.action)}</td><td>${escapeHtml(log.sender || '-')}</td><td>${escapeHtml(content)}</td></tr>`;
+                });
+                html += '</table>';
+                container.innerHTML = html;
+            });
+        }
+
+        function loadAdminUsers() {
+            fetch('/api/admin/online_users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_id: userId })
+            }).then(res => res.json()).then(data => {
+                const list = document.getElementById('admin-user-list');
+                list.innerHTML = data.users.map(u => {
+                    // 管理员不显示禁言和踢出按钮
+                    const isAdminUser = u.is_admin;
+                    const buttons = isAdminUser ? '' : `
+                        <button class="mute-btn" data-id="${u.user_id}">禁言</button>
+                        <button class="kick-btn" data-id="${u.user_id}">踢出</button>
+                    `;
+                    return `
+                        <div class="admin-user-item">
+                            <span>${u.avatar} ${escapeHtml(u.nickname)}${u.is_admin ? ' (admin)' : ''}</span>
+                            <span style="font-size:0.8rem;">${u.ip}</span>
+                            <div>${buttons}</div>
+                        </div>
+                    `;
+                }).join('');
+                list.querySelectorAll('.mute-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const targetId = btn.dataset.id;
+                        const duration = prompt('禁言秒数(10,60,300,600,3600)', '60');
+                        if (duration === null) return;
+                        const seconds = parseInt(duration, 10);
+                        if (!seconds || seconds <= 0) { alert('请输入有效的秒数'); return; }
+                        fetch('/api/admin/mute_user', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ admin_id: userId, target_id: targetId, duration: seconds })
+                        });
+                    });
+                });
+                list.querySelectorAll('.kick-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const targetId = btn.dataset.id;
+                        if (confirm('踢出该用户?')) {
+                            fetch('/api/admin/kick_user', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ admin_id: userId, target_id: targetId })
+                            }).then(() => loadBlacklist());
+                        }
+                    });
+                });
+            });
+        }
+
+        function loadBlacklist() {
+            fetch('/api/admin/blacklist?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
+                const container = document.getElementById('blacklist-container');
+                // 黑名单按设备 ID 维度，同时展示踢出时的昵称和 IP 方便辨认
+                container.innerHTML = (data.items || []).map(item => `
+                        <div>${escapeHtml(item.nickname || item.device_id)}
+                            <span style="font-size:0.8rem;color:#999;">(${escapeHtml(item.ip || '未知IP')})</span>
+                            <button onclick="removeBlacklist('${item.device_id}')">解除</button></div>`).join('');
+                window.removeBlacklist = function (blockedDeviceId) {
+                    fetch('/api/admin/remove_blacklist', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId, device_id: blockedDeviceId })
+                    }).then(() => loadBlacklist());
+                };
+            });
+        }
+
+        function saveRoomName() {
+            const name = document.getElementById('room-name-input').value.trim();
+            fetch('/api/admin/set_room_name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, name })
+            });
+        }
+
+        function setPassword() {
+            const pw = document.getElementById('password-input-admin').value.trim();
+            fetch('/api/admin/set_password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, password: pw })
+            }).then(res => res.json()).then(d => alert(d.message));
+        }
+
+        function clearPassword() {
+            fetch('/api/admin/set_password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, password: '' })
+            }).then(res => res.json()).then(d => alert(d.message));
+        }
+
+        function toggleRoomOpen() {
+            fetch('/api/room_status').then(res => res.json()).then(data => {
+                const newOpen = !data.open;
+                fetch('/api/admin/set_room_open', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, open: newOpen })
+                }).then(res => res.json()).then(d => {
+                    alert(d.open ? '房间已打开' : '房间已关闭');
+                    if (!d.open) { eventSource.close(); location.href = '/admin'; }
+                });
+            });
+        }
+
+        function saveMessageToLocal(msg) {
+            const key = 'chat_history_' + location.origin;
+            let history = JSON.parse(localStorage.getItem(key) || '[]');
+            history.push(msg);
+            if (history.length > 500) history = history.slice(-500);
+            localStorage.setItem(key, JSON.stringify(history));
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            // 补充引号转义，使结果也可安全用于 HTML 属性（如图片 src）
+            return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        window.addEventListener('beforeunload', () => {
+            // sendBeacon 直接传字符串会以 text/plain 发送，被后端拒绝；用 Blob 指定 JSON 类型
+            if (userId) navigator.sendBeacon('/api/leave',
+                new Blob([JSON.stringify({ user_id: userId })], { type: 'application/json' }));
+        });
+    </script>
+</body>
+
+</html>
