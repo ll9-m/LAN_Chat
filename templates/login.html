@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>进入 - 在线匿名聊天室</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+               background: #f0f2f5; min-height: 100vh;
+               display: flex; align-items: center; justify-content: center; }
+        .login-box { background: white; border-radius: 16px; padding: 40px 36px; width: 380px; max-width: 92%;
+                     box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .login-box h1 { font-size: 1.3rem; color: #333; text-align: center; margin-bottom: 8px; }
+        .login-box .sub { text-align: center; color: #999; font-size: 0.85rem; margin-bottom: 28px; }
+        .role-tabs { display: flex; gap: 0; margin-bottom: 24px; background: #f0f2f5; border-radius: 10px; padding: 4px; }
+        .role-tab { flex: 1; text-align: center; padding: 10px 0; border-radius: 8px; cursor: pointer;
+                    font-size: 0.95rem; color: #666; transition: all .2s; border: none; background: none; font-weight: 500; }
+        .role-tab.active { background: #12b7f5; color: white; box-shadow: 0 2px 8px rgba(18,183,245,0.4); }
+        .field { margin-bottom: 18px; }
+        .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 6px; }
+        .field input { width: 100%; padding: 11px 14px; border: 1px solid #dcdfe6; border-radius: 8px;
+                       font-size: 0.95rem; outline: none; transition: border-color .2s; }
+        .field input:focus { border-color: #12b7f5; }
+        .enter-btn { width: 100%; padding: 13px 0; background: #12b7f5; color: white; border: none;
+                     border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+        .enter-btn:hover { opacity: 0.88; }
+        .hint { text-align: center; color: #bbb; font-size: 0.78rem; margin-top: 16px; }
+        .qr-section { text-align: center; margin-top: 24px; padding-top: 20px; border-top: 1px solid #f0f0f0; }
+        .qr-section .qr-label { font-size: 0.82rem; color: #999; margin-bottom: 10px; }
+        .qr-section img { width: 140px; height: 140px; border: 1px solid #eee; border-radius: 8px; }
+        #admin-pw-field { display: none; }
+        .err { color: #f56c6c; font-size: 0.85rem; text-align: center; margin-bottom: 12px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>在线匿名聊天室</h1>
+        <div class="sub">请选择身份进入</div>
+
+        <div class="role-tabs">
+            <button class="role-tab active" id="tab-user" type="button">普通登录</button>
+            <button class="role-tab" id="tab-admin" type="button">管理员登录</button>
+        </div>
+
+        <div class="err" id="err-msg"></div>
+
+        <div class="field" id="admin-pw-field">
+            <label>管理员密码</label>
+            <input type="password" id="admin-pw" placeholder="请输入管理员密码" autocomplete="current-password">
+        </div>
+
+        <button class="enter-btn" id="enter-btn">进入</button>
+        <div class="hint">普通登录可浏览并进入聊天房间</div>
+
+        <div class="qr-section">
+            <div class="qr-label">手机扫码直接进入</div>
+            <img src="/api/entry-qr" alt="入口二维码">
+        </div>
+    </div>
+
+    <script>
+        let role = 'user';
+        const tabUser = document.getElementById('tab-user');
+        const tabAdmin = document.getElementById('tab-admin');
+        const pwField = document.getElementById('admin-pw-field');
+        const pwInput = document.getElementById('admin-pw');
+        const errBox = document.getElementById('err-msg');
+
+        function setRole(r) {
+            role = r;
+            tabUser.classList.toggle('active', r === 'user');
+            tabAdmin.classList.toggle('active', r === 'admin');
+            pwField.style.display = r === 'admin' ? 'block' : 'none';
+            errBox.style.display = 'none';
+            if (r === 'admin') pwInput.focus();
+        }
+        tabUser.addEventListener('click', () => setRole('user'));
+        tabAdmin.addEventListener('click', () => setRole('admin'));
+
+        document.getElementById('enter-btn').addEventListener('click', doLogin);
+        pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+        function doLogin() {
+            errBox.style.display = 'none';
+            const body = { role };
+            if (role === 'admin') body.password = pwInput.value;
+            fetch('/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) { location.href = d.redirect || '/rooms'; }
+                    else { errBox.textContent = d.error || '登录失败'; errBox.style.display = 'block'; }
+                })
+                .catch(() => { errBox.textContent = '网络错误'; errBox.style.display = 'block'; });
+        }
+    </script>
+</body>
+</html>

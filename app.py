@@ -24,7 +24,7 @@ import sqlite3
 import threading
 import qrcode
 from flask import (Flask, request, Response, jsonify, render_template, g,
-                   send_from_directory, stream_with_context, Blueprint)
+                   send_from_directory, stream_with_context, Blueprint, session, redirect)
 
 # ==================== 常量与路径 ====================
 if getattr(sys, 'frozen', False):
@@ -110,7 +110,20 @@ class DatabaseManager:
                     recall_time_limit INTEGER NOT NULL DEFAULT 300,
                     created_at REAL
                 );
+                CREATE TABLE IF NOT EXISTS config (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
+                );
             """)
+            self._conn.execute("INSERT OR IGNORE INTO config(key,value) VALUES('admin_password','ADMIN')")
+
+    def get_config(self, key, default=None):
+        rows = self._query('SELECT value FROM config WHERE key=?', (key,))
+        return rows[0]['value'] if rows else default
+
+    def set_config(self, key, value):
+        self._execute('INSERT INTO config(key,value) VALUES(?,?) '
+                      'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, value))
 
     def _query(self, sql, params=()):
         with self._lock:
@@ -454,7 +467,6 @@ class ChatRoom:
         return {'type': 'user_list', 'users': normal, 'admin_users': admins}
 
     def is_admin(self, user_id):
-        if user_id == 'admin_console': return True
         with self.lock:
             user = self.online_users.get(user_id)
             return user is not None and user.get('is_admin')
@@ -701,6 +713,8 @@ class RoomManager:
 
 # ==================== Flask 应用 ====================
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 os.makedirs(QR_DIR, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, 'static'), exist_ok=True)
@@ -713,12 +727,60 @@ def sse_data(event):
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
-# ---------- 主页面 ----------
+# ---------- 进入界面（登录） ----------
 @app.route('/')
+def login_page():
+    if session.get('role'):
+        return redirect('/rooms')
+    return render_template('login.html')
+
+
+@app.route('/api/entry-qr')
+def api_entry_qr():
+    ip = get_local_ip()
+    url = f'http://{ip}:{BASE_PORT}/'
+    qr_path = os.path.join(QR_DIR, 'entry.png')
+    generate_qr(url, qr_path)
+    return send_from_directory(QR_DIR, 'entry.png')
+
+
+@app.route('/login', methods=['POST'])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    role = data.get('role', 'user')
+    if role == 'admin':
+        pw = data.get('password', '')
+        if pw != db_manager.get_config('admin_password', 'ADMIN'):
+            return jsonify({'error': '管理员密码错误'}), 403
+        session['role'] = 'admin'
+        return jsonify({'success': True, 'redirect': '/rooms'})
+    session['role'] = 'user'
+    return jsonify({'success': True, 'redirect': '/rooms'})
+
+
+@app.route('/logout', methods=['POST'])
+def api_logout():
+    session.clear()
+    return jsonify({'success': True, 'redirect': '/'})
+
+
+# ---------- 房间列表页（按角色分流） ----------
+@app.route('/rooms')
 def rooms_list():
+    role = session.get('role')
+    if not role:
+        return redirect('/')
     rooms = db_manager.list_rooms()
     ip = get_local_ip()
-    return render_template('rooms.html', rooms=rooms, ip=ip)
+    if role == 'admin':
+        return render_template('rooms.html', rooms=rooms, ip=ip)
+    return render_template('rooms_user.html', rooms=rooms, ip=ip)
+
+
+def _require_admin():
+    if session.get('role') != 'admin':
+        return jsonify({'error': '需要管理员登录'}), 403
+    return None
 
 
 @app.route('/room/<room_id>/')
@@ -728,6 +790,8 @@ def room_page(room_id):
     room_instance = room_manager.get_or_create(room_id)
     if not room_instance: return '房间初始化失败', 500
     is_admin_page = request.args.get('admin') == '1'
+    if is_admin_page and session.get('role') != 'admin':
+        return redirect('/')
     return render_template('index.html', is_admin=is_admin_page,
                            room_name=room_instance.room_name,
                            has_password=room_instance.room_password is not None,
@@ -746,6 +810,8 @@ def api_list_rooms():
 
 @app.route('/api/rooms/create', methods=['POST'])
 def api_create_room():
+    err = _require_admin()
+    if err: return err
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '新房间').strip()
     pw = data.get('password')
@@ -758,6 +824,8 @@ def api_create_room():
 
 @app.route('/api/rooms/delete', methods=['POST'])
 def api_delete_room():
+    err = _require_admin()
+    if err: return err
     data = request.get_json(silent=True) or {}
     room_id = data.get('room_id')
     if not room_id: return jsonify({'error': '缺少 room_id'}), 400
@@ -780,6 +848,8 @@ def api_delete_room():
 
 @app.route('/api/rooms/toggle', methods=['POST'])
 def api_toggle_room():
+    err = _require_admin()
+    if err: return err
     data = request.get_json(silent=True) or {}
     room_id = data.get('room_id')
     if not room_id: return jsonify({'error': '缺少 room_id'}), 400
@@ -807,6 +877,62 @@ def api_room_qr(room_id):
         ip = get_local_ip()
         generate_qr(f'http://{ip}:{BASE_PORT}/room/{room_id}/', qr_path)
     return send_from_directory(QR_DIR, f'{room_id}.png')
+
+
+@app.route('/api/admin/change_password', methods=['POST'])
+def api_change_admin_password():
+    err = _require_admin()
+    if err: return err
+    data = request.get_json(silent=True) or {}
+    old_pw = data.get('old_password', '')
+    new_pw = (data.get('new_password') or '').strip()
+    if not new_pw:
+        return jsonify({'error': '新密码不能为空'}), 400
+    if old_pw != db_manager.get_config('admin_password', 'ADMIN'):
+        return jsonify({'error': '当前密码错误'}), 403
+    db_manager.set_config('admin_password', new_pw)
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/global_reset', methods=['POST'])
+def api_global_reset():
+    err = _require_admin()
+    if err: return err
+    data = request.get_json(silent=True) or {}
+    if data.get('password') != db_manager.get_config('admin_password', 'ADMIN'):
+        return jsonify({'error': '当前密码错误'}), 403
+    # 关闭所有房间实例的 DB 连接
+    with room_manager._lock:
+        for inst in room_manager._rooms.values():
+            try: inst.db.close()
+            except Exception: pass
+        room_manager._rooms.clear()
+    # 删除所有房间 DB 文件和上传目录
+    import glob as _glob, shutil
+    for f in _glob.glob(os.path.join(BASE_DIR, 'room_*.db')):
+        try: os.remove(f)
+        except Exception: pass
+    for d in _glob.glob(os.path.join(BASE_DIR, 'uploads_*')):
+        if os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+    # 删除所有房间二维码
+    for f in _glob.glob(os.path.join(QR_DIR, '*.png')):
+        try: os.remove(f)
+        except Exception: pass
+    # 重置 rooms 表：只保留默认房间
+    with db_manager._lock, db_manager._conn:
+        db_manager._conn.execute('DELETE FROM rooms')
+        db_manager._conn.execute(
+            'INSERT INTO rooms(room_id, room_name, is_open, password, file_limit_mb, max_history, recall_time_limit, created_at) '
+            'VALUES(?,?,?,?,?,?,?,?)',
+            ('room_default', '在线匿名聊天室', 1, None, 0, 200, 300, time.time()))
+    # 重置管理员密码为默认
+    db_manager.set_config('admin_password', 'ADMIN')
+    # 重建默认房间
+    room_manager.get_or_create('room_default')
+    ip = get_local_ip()
+    generate_qr(f'http://{ip}:{BASE_PORT}/room/room_default/', os.path.join(QR_DIR, 'room_default.png'))
+    return jsonify({'success': True})
 
 
 # ==================== 房间路由（Blueprint） ====================
@@ -838,8 +964,11 @@ def _sync_upload_cap(room):
 @room_bp.route('/api/join', methods=['POST'])
 def api_join():
     data = request.get_json(silent=True) or {}
+    want_admin = bool(data.get('is_admin'))
+    if want_admin and session.get('role') != 'admin':
+        return jsonify({'error': '需要管理员登录'}), 403
     result, status = g.room.join(data.get('nickname'), data.get('device_id'),
-                                  request.remote_addr, data.get('password'), bool(data.get('is_admin')))
+                                  request.remote_addr, data.get('password'), want_admin)
     return jsonify(result), status
 
 @room_bp.route('/api/leave', methods=['POST'])
@@ -1080,10 +1209,8 @@ if __name__ == '__main__':
         generate_qr(f'http://{ip}:{BASE_PORT}/room/room_default/', os.path.join(QR_DIR, 'room_default.png'))
 
     print("========================================")
-    print("   在线匿名聊天室（多房间版）已启动")
-    print(f"   管理页面: http://{ip}:{BASE_PORT}/")
-    for r in db_manager.list_rooms():
-        print(f"   房间 [{r['room_name']}]: http://{ip}:{BASE_PORT}/room/{r['room_id']}/")
-    print("   按 Ctrl+C 停止服务")
+    print("  <<-- 在线匿名聊天室（多房间版）已启动-->>")
+    print(f"  -->进入地址: http://{ip}:{BASE_PORT}/")
+    print("  按 Ctrl+C 停止服务")
     print("========================================")
     app.run(host='0.0.0.0', port=BASE_PORT, threaded=True, debug=False)

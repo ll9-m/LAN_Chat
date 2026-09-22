@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>房间列表 - 在线匿名聊天室</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+               background: #f0f2f5; min-height: 100vh; padding: 20px; }
+        .header { max-width: 900px; margin: 0 auto 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.4rem; color: #333; }
+        .btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem;
+               font-weight: 500; transition: opacity .15s; text-decoration: none; display: inline-block; }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #12b7f5; color: white; }
+        .btn-success { background: #67c23a; color: white; }
+        .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+        .room-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .room-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .room-card h3 { font-size: 1rem; margin-bottom: 8px; color: #333; }
+        .room-card .status { font-size: 0.8rem; margin-bottom: 12px; color: #666; }
+        .room-card .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+        .dot-green { background: #67c23a; }
+        .dot-red { background: #f56c6c; }
+        .room-card .actions { display: flex; gap: 8px; align-items: center; }
+        .room-card .qr-thumb { width: 72px; height: 72px; border-radius: 6px; cursor: pointer; border: 1px solid #eee; }
+        .empty-msg { max-width: 900px; margin: 40px auto; text-align: center; color: #999; font-size: 0.95rem; }
+        .qr-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; cursor: zoom-out; }
+        .qr-modal.active { display: flex; }
+        .qr-modal img { max-width: 300px; max-height: 300px; border-radius: 8px; background: white; padding: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>房间列表</h1>
+        <button class="btn btn-primary" id="logout-btn">退出</button>
+    </div>
+    <div class="room-grid" id="room-grid"></div>
+    <div class="empty-msg" id="empty-msg" style="display:none;">暂无开放房间</div>
+
+    <div class="qr-modal" id="qr-modal"><img id="qr-modal-img" src=""></div>
+
+    <script>
+        const grid = document.getElementById('room-grid');
+        const emptyMsg = document.getElementById('empty-msg');
+        const qrModal = document.getElementById('qr-modal');
+        const qrModalImg = document.getElementById('qr-modal-img');
+
+        function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+        function loadRooms() {
+            fetch('/api/rooms/status').then(r => r.json()).then(data => {
+                const rooms = (data.rooms || []).filter(r => r.is_open);
+                if (!rooms.length) { grid.innerHTML = ''; emptyMsg.style.display = 'block'; return; }
+                emptyMsg.style.display = 'none';
+                grid.innerHTML = rooms.map(r => `
+                    <div class="room-card">
+                        <img class="qr-thumb" src="/api/rooms/qr/${r.room_id}?t=${Date.now()}"
+                             onclick="showQR('${r.room_id}')" alt="二维码">
+                        <h3>${escHtml(r.room_name)}</h3>
+                        <div class="status"><span class="dot dot-green"></span>开放中</div>
+                        <div class="actions">
+                            <a href="/room/${r.room_id}/" class="btn btn-success btn-sm" target="_blank">进入聊天</a>
+                        </div>
+                    </div>`).join('');
+            });
+        }
+
+        function showQR(roomId) {
+            qrModalImg.src = '/api/rooms/qr/' + roomId + '?t=' + Date.now();
+            qrModal.classList.add('active');
+        }
+        qrModal.addEventListener('click', () => qrModal.classList.remove('active'));
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            fetch('/logout', { method: 'POST' }).then(() => location.href = '/');
+        });
+
+        loadRooms();
+    </script>
+</body>
+</html>

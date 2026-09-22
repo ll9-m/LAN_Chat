@@ -44,7 +44,12 @@
 <body>
     <div class="header">
         <h1>房间管理</h1>
-        <button class="btn btn-primary" id="create-btn">+ 新建房间</button>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-warning" id="chpw-btn">修改管理员密码</button>
+            <button class="btn btn-danger" id="reset-btn">恢复出厂设置</button>
+            <button class="btn btn-primary" id="create-btn">+ 新建房间</button>
+            <button class="btn" style="background:#f5f5f5;color:#666;" id="logout-btn">退出</button>
+        </div>
     </div>
     <div class="room-grid" id="room-grid"></div>
     <div class="empty-msg" id="empty-msg" style="display:none;">暂无房间，点击"新建房间"创建第一个</div>
@@ -61,12 +66,39 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="chpw-modal">
+        <div class="modal">
+            <h3>修改管理员密码</h3>
+            <input type="password" id="chpw-old" placeholder="当前密码" autocomplete="current-password">
+            <input type="password" id="chpw-new" placeholder="新密码" autocomplete="new-password">
+            <input type="password" id="chpw-new2" placeholder="确认新密码" autocomplete="new-password">
+            <div class="modal-actions">
+                <button class="btn" style="background:#f5f5f5;" id="chpw-cancel">取消</button>
+                <button class="btn btn-primary" id="chpw-confirm">确认修改</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="reset-modal">
+        <div class="modal">
+            <h3 style="color:#f56c6c;">恢复出厂设置</h3>
+            <p style="font-size:0.85rem;color:#666;margin-bottom:12px;">将删除所有房间、聊天记录、文件，并将管理员密码重置为 ADMIN。此操作不可撤销！</p>
+            <input type="password" id="reset-pw" placeholder="当前管理员密码" autocomplete="current-password">
+            <div class="modal-actions">
+                <button class="btn" style="background:#f5f5f5;" id="reset-cancel">取消</button>
+                <button class="btn btn-danger" id="reset-confirm">确认重置</button>
+            </div>
+        </div>
+    </div>
+
     <div class="qr-modal" id="qr-modal"><img id="qr-modal-img" src=""></div>
 
     <script>
         const grid = document.getElementById('room-grid');
         const emptyMsg = document.getElementById('empty-msg');
         const createModal = document.getElementById('create-modal');
+        const chpwModal = document.getElementById('chpw-modal');
+        const resetModal = document.getElementById('reset-modal');
         const qrModal = document.getElementById('qr-modal');
         const qrModalImg = document.getElementById('qr-modal-img');
         const IP = '{{ ip }}';
@@ -127,6 +159,52 @@
             const pw = document.getElementById('new-room-pw').value;
             fetch('/api/rooms/create', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, password: pw || null}) })
                 .then(r => r.json()).then(d => { if (d.success) { createModal.classList.remove('active'); loadRooms(); } else alert(d.error || '创建失败'); });
+        });
+
+        document.getElementById('chpw-btn').addEventListener('click', () => {
+            document.getElementById('chpw-old').value = '';
+            document.getElementById('chpw-new').value = '';
+            document.getElementById('chpw-new2').value = '';
+            chpwModal.classList.add('active');
+            document.getElementById('chpw-old').focus();
+        });
+        document.getElementById('chpw-cancel').addEventListener('click', () => chpwModal.classList.remove('active'));
+        chpwModal.addEventListener('click', (e) => { if (e.target === chpwModal) chpwModal.classList.remove('active'); });
+        document.getElementById('chpw-confirm').addEventListener('click', () => {
+            const oldPw = document.getElementById('chpw-old').value;
+            const newPw = document.getElementById('chpw-new').value;
+            const newPw2 = document.getElementById('chpw-new2').value;
+            if (!newPw) { alert('请输入新密码'); return; }
+            if (newPw !== newPw2) { alert('两次输入的新密码不一致'); return; }
+            fetch('/api/admin/change_password', { method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({old_password: oldPw, new_password: newPw}) })
+                .then(r => r.json()).then(d => {
+                    if (d.success) { chpwModal.classList.remove('active'); alert('密码修改成功'); }
+                    else alert(d.error || '修改失败');
+                });
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            document.getElementById('reset-pw').value = '';
+            resetModal.classList.add('active');
+            document.getElementById('reset-pw').focus();
+        });
+        document.getElementById('reset-cancel').addEventListener('click', () => resetModal.classList.remove('active'));
+        resetModal.addEventListener('click', (e) => { if (e.target === resetModal) resetModal.classList.remove('active'); });
+        document.getElementById('reset-confirm').addEventListener('click', () => {
+            const pw = document.getElementById('reset-pw').value;
+            if (!pw) { alert('请输入当前管理员密码'); return; }
+            if (!confirm('确定恢复出厂设置？\n所有房间、聊天记录、文件将被永久删除！')) return;
+            fetch('/api/admin/global_reset', { method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({password: pw}) })
+                .then(r => r.json()).then(d => {
+                    if (d.success) { resetModal.classList.remove('active'); alert('已恢复出厂设置'); loadRooms(); }
+                    else alert(d.error || '重置失败');
+                });
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            fetch('/logout', { method: 'POST' }).then(() => location.href = '/');
         });
 
         loadRooms();
