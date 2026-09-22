@@ -33,17 +33,20 @@
 
 数据库
 ------
-- lan_chat.db（主库 DatabaseManager）
-    rooms  表：房间注册表（单一事实来源，room_id 主键）
-    config 表：键值配置（目前存 admin_password）
-- room_room_<id>.db（每房间独立库 Database，注意 room_db_path 会再拼一层 room_ 前缀）
-    profiles / messages / blacklist / favorites / message_audit
-    均以 (room_id, ...) 复合主键；另有删除审计触发器与统计视图
-- 旧库自动迁移：_migrate() 为缺 room_id 的表补列并回填
+- MySQL 8.0，库名 lan_chat（utf8mb4），连接账号见 MYSQL_* 常量
+- 全部房间共用一个库，业务表以 room_id 区分；完整 DDL 见 sql/schema.sql
+    rooms / config           → DatabaseManager（房间注册表 + 全局配置）
+    profiles / messages /
+    blacklist / favorites /
+    message_audit            → Database（按 room_id 过滤）
+- 完整性：主键/外键(ON DELETE CASCADE)/UNIQUE/CHECK/DEFAULT、索引
+- 对象：视图 v_message_stats / v_message_type_stats；
+        触发器 trg_message_delete_audit；
+        存储过程 sp_get_message_stats / sp_cleanup_old_messages / sp_get_audit_log
 
 线程模型
 --------
-- Flask threaded=True；每房间一个 SQLite 连接（check_same_thread=False）
+- Flask threaded=True；每实例一个 MySQL 连接（autocommit，DictCursor）
 - Database/DatabaseManager 内部 threading.Lock 保证线程安全
 - 每房间一个 Broadcaster，SSE 客户端各持一个 queue，广播时依次投递
 - RoomManager._lock 保护 _rooms 字典的懒加载
@@ -51,7 +54,7 @@
 主要类
 ------
 - DatabaseManager : 主库（房间注册表 + 配置）
-- Database        : 单房间数据读写
+- Database        : 单房间数据读写（共享库，room_id 作用域）
 - Broadcaster     : SSE 事件广播
 - ChatRoom        : 房间业务逻辑（加入/发消息/管理操作，均返回 (json, status)）
 - RoomManager     : room_id → ChatRoom 实例缓存
@@ -66,9 +69,9 @@ import queue
 import shutil
 import socket
 import glob
-import sqlite3
 import threading
 import qrcode
+import pymysql
 from flask import (Flask, request, Response, jsonify, render_template, g,
                    send_from_directory, stream_with_context, Blueprint, session, redirect)
 
@@ -79,7 +82,13 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DB_FILE = os.path.join(BASE_DIR, 'lan_chat.db')        # 主库文件
+# MySQL 连接配置（课程设计环境使用 root 本地库 lan_chat）
+MYSQL_HOST = os.environ.get('MYSQL_HOST', '127.0.0.1')
+MYSQL_PORT = int(os.environ.get('MYSQL_PORT', '3306'))
+MYSQL_USER = os.environ.get('MYSQL_USER', 'root')
+MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD', 'root')
+MYSQL_DB = os.environ.get('MYSQL_DB', 'lan_chat')
+
 UPLOAD_ROOT = os.path.join(BASE_DIR, 'uploads')        # 全局上传目录（兼容旧版房间）
 QR_DIR = os.path.join(BASE_DIR, 'static', 'qrcode')    # 二维码图片输出目录
 
@@ -138,11 +147,6 @@ def generate_qr(url, filepath):
     img.save(filepath)
 
 
-def room_db_path(room_id):
-    """房间独立 DB 的绝对路径。注意：room_id 本身已带 room_ 前缀，最终文件名为 room_room_<id>.db。"""
-    return os.path.join(BASE_DIR, f'room_{room_id}.db')
-
-
 def room_uploads_dir(room_id):
     """房间上传目录 uploads_<room_id> 的绝对路径（不存在则创建）。"""
     d = os.path.join(BASE_DIR, f'uploads_{room_id}')
@@ -150,219 +154,306 @@ def room_uploads_dir(room_id):
     return d
 
 
+# ==================== MySQL 连接与建库建表 ====================
+def _mysql_connect(with_db=True):
+    """建立到 MySQL 的连接（DictCursor，autocommit）。with_db=False 时仅连服务器（用于 CREATE DATABASE）。"""
+    kwargs = dict(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER,
+                  password=MYSQL_PASSWORD, charset='utf8mb4',
+                  cursorclass=pymysql.cursors.DictCursor, autocommit=True,
+                  connect_timeout=5)
+    if with_db:
+        kwargs['database'] = MYSQL_DB
+    return pymysql.connect(**kwargs)
+
+
+def ensure_mysql_schema():
+    """
+    幂等初始化：建库 → 建表/视图/触发器/存储过程 → 写默认管理员密码。
+    完整带注释脚本见 sql/schema.sql（报告用）；此处为应用启动路径。
+    """
+    conn = _mysql_connect(with_db=False)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f'CREATE DATABASE IF NOT EXISTS `{MYSQL_DB}` '
+                f"DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_unicode_ci")
+    finally:
+        conn.close()
+
+    conn = _mysql_connect(with_db=True)
+    try:
+        with conn.cursor() as cur:
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS rooms (
+                    room_id            VARCHAR(64)  NOT NULL,
+                    room_name          VARCHAR(100) NOT NULL DEFAULT '新房间',
+                    is_open            TINYINT      NOT NULL DEFAULT 1,
+                    password           VARCHAR(255)          DEFAULT NULL,
+                    file_limit_mb      INT          NOT NULL DEFAULT 0,
+                    max_history        INT          NOT NULL DEFAULT 200,
+                    recall_time_limit  INT          NOT NULL DEFAULT 300,
+                    created_at         DOUBLE                DEFAULT NULL,
+                    PRIMARY KEY (room_id),
+                    CONSTRAINT chk_rooms_open        CHECK (is_open IN (0, 1)),
+                    CONSTRAINT chk_rooms_file_limit  CHECK (file_limit_mb >= 0),
+                    CONSTRAINT chk_rooms_max_history CHECK (max_history >= 10),
+                    CONSTRAINT chk_rooms_recall      CHECK (recall_time_limit >= 0)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS config (
+                    `key`   VARCHAR(64) NOT NULL,
+                    `value` TEXT,
+                    PRIMARY KEY (`key`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS profiles (
+                    room_id      VARCHAR(64) NOT NULL,
+                    device_id    VARCHAR(64) NOT NULL,
+                    nickname     VARCHAR(50) NOT NULL,
+                    avatar       VARCHAR(16),
+                    color        VARCHAR(16),
+                    muted_until  DOUBLE      NOT NULL DEFAULT 0,
+                    PRIMARY KEY (room_id, device_id),
+                    CONSTRAINT fk_profiles_room FOREIGN KEY (room_id)
+                        REFERENCES rooms (room_id) ON DELETE CASCADE,
+                    CONSTRAINT chk_profiles_mute CHECK (muted_until >= 0),
+                    INDEX idx_profiles_nickname (room_id, nickname)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS messages (
+                    seq         BIGINT       NOT NULL AUTO_INCREMENT,
+                    room_id     VARCHAR(64)  NOT NULL,
+                    id          VARCHAR(64)  NOT NULL,
+                    type        VARCHAR(16),
+                    content     TEXT,
+                    sender      VARCHAR(50),
+                    user_id     VARCHAR(64),
+                    is_admin    TINYINT      NOT NULL DEFAULT 0,
+                    avatar      VARCHAR(16),
+                    color       VARCHAR(16),
+                    timestamp   DOUBLE,
+                    file_name   VARCHAR(100),
+                    file_size   BIGINT,
+                    PRIMARY KEY (seq),
+                    UNIQUE KEY uk_messages_room_id (room_id, id),
+                    CONSTRAINT fk_messages_room FOREIGN KEY (room_id)
+                        REFERENCES rooms (room_id) ON DELETE CASCADE,
+                    CONSTRAINT chk_messages_type CHECK (
+                        type IS NULL OR type IN ('text', 'image', 'file', 'system')
+                    ),
+                    CONSTRAINT chk_messages_admin CHECK (is_admin IN (0, 1)),
+                    INDEX idx_messages_room_time (room_id, timestamp),
+                    INDEX idx_messages_room_sender (room_id, sender)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS blacklist (
+                    room_id    VARCHAR(64) NOT NULL,
+                    device_id  VARCHAR(64) NOT NULL,
+                    nickname   VARCHAR(50),
+                    ip         VARCHAR(45),
+                    created_at DOUBLE,
+                    PRIMARY KEY (room_id, device_id),
+                    CONSTRAINT fk_blacklist_room FOREIGN KEY (room_id)
+                        REFERENCES rooms (room_id) ON DELETE CASCADE,
+                    INDEX idx_blacklist_created (created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS favorites (
+                    id         BIGINT       NOT NULL AUTO_INCREMENT,
+                    room_id    VARCHAR(64)  NOT NULL,
+                    user_id    VARCHAR(64)  NOT NULL,
+                    msg_id     VARCHAR(64),
+                    msg_type   VARCHAR(16),
+                    content    TEXT,
+                    sender     VARCHAR(50),
+                    file_name  VARCHAR(100),
+                    file_size  BIGINT,
+                    created_at DOUBLE       NOT NULL,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uk_favorites_user_msg (room_id, user_id, msg_id),
+                    CONSTRAINT fk_favorites_room FOREIGN KEY (room_id)
+                        REFERENCES rooms (room_id) ON DELETE CASCADE,
+                    INDEX idx_favorites_user (room_id, user_id, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+            # 审计表故意不设外键：房间删除后仍保留删除痕迹（报告 4.2.3 可说明）
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS message_audit (
+                    audit_id   BIGINT       NOT NULL AUTO_INCREMENT,
+                    room_id    VARCHAR(64)  NOT NULL,
+                    message_id VARCHAR(64),
+                    type       VARCHAR(16),
+                    content    TEXT,
+                    sender     VARCHAR(50),
+                    user_id    VARCHAR(64),
+                    deleted_at DOUBLE,
+                    action     VARCHAR(16),
+                    PRIMARY KEY (audit_id),
+                    INDEX idx_audit_room_time (room_id, deleted_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+
+            cur.execute('''
+                CREATE OR REPLACE VIEW v_message_stats AS
+                SELECT room_id, user_id, sender,
+                       COUNT(*) AS message_count,
+                       MAX(`timestamp`) AS last_active,
+                       MIN(`timestamp`) AS first_active
+                FROM messages
+                WHERE user_id IS NOT NULL
+                GROUP BY room_id, user_id, sender''')
+            cur.execute('''
+                CREATE OR REPLACE VIEW v_message_type_stats AS
+                SELECT room_id, type, COUNT(*) AS count
+                FROM messages
+                GROUP BY room_id, type''')
+
+            cur.execute('DROP TRIGGER IF EXISTS trg_message_delete_audit')
+            cur.execute('''
+                CREATE TRIGGER trg_message_delete_audit
+                AFTER DELETE ON messages
+                FOR EACH ROW
+                INSERT INTO message_audit
+                    (room_id, message_id, type, content, sender, user_id, deleted_at, action)
+                VALUES
+                    (OLD.room_id, OLD.id, OLD.type, OLD.content, OLD.sender,
+                     OLD.user_id, UNIX_TIMESTAMP(), 'DELETE')''')
+
+            cur.execute('DROP PROCEDURE IF EXISTS sp_get_message_stats')
+            cur.execute('''
+                CREATE PROCEDURE sp_get_message_stats(IN p_room_id VARCHAR(64))
+                BEGIN
+                    SELECT COUNT(*) AS total_messages
+                    FROM messages WHERE room_id = p_room_id;
+
+                    SELECT * FROM v_message_stats
+                    WHERE room_id = p_room_id
+                    ORDER BY message_count DESC;
+
+                    SELECT m.type, COUNT(*) AS count,
+                           ROUND(COUNT(*) * 100.0 /
+                                 NULLIF((SELECT COUNT(*) FROM messages
+                                         WHERE room_id = p_room_id), 0), 1) AS percentage
+                    FROM messages m
+                    WHERE m.room_id = p_room_id
+                    GROUP BY m.type
+                    ORDER BY count DESC;
+                END''')
+
+            cur.execute('DROP PROCEDURE IF EXISTS sp_cleanup_old_messages')
+            cur.execute('''
+                CREATE PROCEDURE sp_cleanup_old_messages(
+                    IN p_room_id VARCHAR(64), IN p_max_keep INT)
+                BEGIN
+                    DELETE FROM messages
+                    WHERE room_id = p_room_id
+                      AND seq NOT IN (
+                          SELECT seq FROM (
+                              SELECT seq FROM messages
+                              WHERE room_id = p_room_id
+                              ORDER BY seq DESC LIMIT p_max_keep
+                          ) t
+                      );
+                END''')
+
+            cur.execute('DROP PROCEDURE IF EXISTS sp_get_audit_log')
+            cur.execute('''
+                CREATE PROCEDURE sp_get_audit_log(
+                    IN p_room_id VARCHAR(64), IN p_limit INT)
+                BEGIN
+                    SELECT * FROM message_audit
+                    WHERE room_id = p_room_id
+                    ORDER BY audit_id DESC
+                    LIMIT p_limit;
+                END''')
+
+            cur.execute("INSERT INTO config (`key`, `value`) VALUES ('admin_password', 'ADMIN') "
+                        "ON DUPLICATE KEY UPDATE `value` = `value`")
+    finally:
+        conn.close()
+
+
 # ==================== 数据库：主库（房间注册表 + 配置） ====================
 class DatabaseManager:
     """
-    主库 lan_chat.db 的线程安全封装。
+    MySQL lan_chat 库的线程安全封装（rooms / config 表）。
     职责：
       - rooms 表 CRUD（房间注册表，单一事实来源）
       - config 表键值读写（目前主要是 admin_password）
-      - delete_room 时顺带清理对应房间 DB 文件与上传目录
-    所有写操作通过 _execute（with lock + conn 事务）；查询通过 _query。
+      - delete_room：删注册行（外键 CASCADE 清业务数据）+ 审计表 + 上传目录
     """
 
-    def __init__(self, path):
+    def __init__(self):
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row   # 查询结果可按列名访问
-        self._init_schema()
-
-    def _init_schema(self):
-        """建表：rooms（房间注册表）、config（全局配置）；写入默认管理员密码。"""
-        with self._lock, self._conn:
-            self._conn.executescript("""
-                CREATE TABLE IF NOT EXISTS rooms (
-                    room_id   TEXT PRIMARY KEY,
-                    room_name TEXT NOT NULL DEFAULT '新房间',
-                    is_open   INTEGER NOT NULL DEFAULT 1,
-                    password  TEXT,
-                    file_limit_mb    INTEGER NOT NULL DEFAULT 0,
-                    max_history      INTEGER NOT NULL DEFAULT 200,
-                    recall_time_limit INTEGER NOT NULL DEFAULT 300,
-                    created_at REAL
-                );
-                CREATE TABLE IF NOT EXISTS config (
-                    key   TEXT PRIMARY KEY,
-                    value TEXT
-                );
-            """)
-            # 默认管理员密码 ADMIN（仅首次插入，不覆盖已有值）
-            self._conn.execute("INSERT OR IGNORE INTO config(key,value) VALUES('admin_password','ADMIN')")
+        self._conn = _mysql_connect()
 
     # ---------- config 键值 ----------
     def get_config(self, key, default=None):
-        """读取 config 中一个键，不存在时返回 default。"""
-        rows = self._query('SELECT value FROM config WHERE key=?', (key,))
+        rows = self._query('SELECT `value` FROM config WHERE `key` = %s', (key,))
         return rows[0]['value'] if rows else default
 
     def set_config(self, key, value):
-        """写入（或覆盖）config 中一个键。"""
-        self._execute('INSERT INTO config(key,value) VALUES(?,?) '
-                      'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, value))
+        self._execute('INSERT INTO config (`key`, `value`) VALUES (%s, %s) '
+                      'ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)', (key, value))
 
     # ---------- 底层读写 ----------
     def _query(self, sql, params=()):
-        """加锁执行查询，返回 fetchall() 结果行列表。"""
         with self._lock:
-            return self._conn.execute(sql, params).fetchall()
+            with self._conn.cursor() as cur:
+                cur.execute(sql, params)
+                return cur.fetchall()
 
     def _execute(self, sql, params=()):
-        """加锁执行单条写语句，with conn 保证自动提交事务。"""
-        with self._lock, self._conn:
-            self._conn.execute(sql, params)
+        with self._lock:
+            with self._conn.cursor() as cur:
+                return cur.execute(sql, params)
 
     # ---------- rooms 表 CRUD ----------
     def list_rooms(self):
-        """按创建时间倒序返回全部房间（dict 列表）。"""
-        return [dict(r) for r in self._query('SELECT * FROM rooms ORDER BY created_at DESC')]
+        return self._query('SELECT * FROM rooms ORDER BY created_at DESC')
 
     def get_room(self, room_id):
-        """按 room_id 查单个房间，不存在返回 None。"""
-        rows = self._query('SELECT * FROM rooms WHERE room_id = ?', (room_id,))
-        return dict(rows[0]) if rows else None
+        rows = self._query('SELECT * FROM rooms WHERE room_id = %s', (room_id,))
+        return rows[0] if rows else None
 
     def create_room(self, room_id, room_name, password=None):
-        """插入新房间记录（其余字段用表默认值，created_at 取当前时间戳）。"""
-        self._execute('INSERT INTO rooms(room_id, room_name, password, created_at) VALUES (?, ?, ?, ?)',
+        self._execute('INSERT INTO rooms(room_id, room_name, password, created_at) VALUES (%s, %s, %s, %s)',
                       (room_id, room_name, password, time.time()))
 
     def delete_room(self, room_id):
         """
-        删除房间：先删注册表记录，再删该房间的独立 DB 文件和上传目录。
-        调用方需先确保内存中的 ChatRoom 实例已关闭 DB 连接（见 api_delete_room）。
+        删除房间：业务表靠外键 ON DELETE CASCADE 连带删除；
+        message_audit 无外键，需显式清理；再删上传目录。
         """
-        self._execute('DELETE FROM rooms WHERE room_id = ?', (room_id,))
-        db_path = room_db_path(room_id)
-        if os.path.exists(db_path):
-            os.remove(db_path)
-        # 直接拼路径，不走 room_uploads_dir（后者会误创建目录）
+        self._execute('DELETE FROM message_audit WHERE room_id = %s', (room_id,))
+        self._execute('DELETE FROM rooms WHERE room_id = %s', (room_id,))
         up = os.path.join(BASE_DIR, f'uploads_{room_id}')
         if os.path.isdir(up):
             shutil.rmtree(up, ignore_errors=True)
 
     def update_room(self, room_id, **kwargs):
-        """按 kwargs 动态拼 UPDATE 语句，部分更新房间字段；kwargs 为空则直接返回。"""
         if not kwargs:
             return
-        sets = ', '.join(f'{k} = ?' for k in kwargs)
+        sets = ', '.join(f'{k} = %s' for k in kwargs)
         vals = list(kwargs.values()) + [room_id]
-        self._execute(f'UPDATE rooms SET {sets} WHERE room_id = ?', vals)
+        self._execute(f'UPDATE rooms SET {sets} WHERE room_id = %s', vals)
 
 
-# ==================== 数据库：房间库 ====================
+# ==================== 数据库：房间业务表（同库 room_id 作用域） ====================
 class Database:
     """
-    单个房间独立 SQLite 库（room_room_<id>.db）的线程安全封装。
-    所有业务表均带 room_id 作为复合主键的一部分，便于未来合库/迁移。
-    表：
-      profiles      用户档案（昵称/头像/颜色/禁言截止时间）
-      messages      聊天消息（text/image/file/system）
-      blacklist     踢出黑名单（按 device_id）
-      favorites     收藏夹
-      message_audit 消息删除审计（由触发器自动写入）
-    视图：v_message_stats / v_message_type_stats（统计用）
+    单房间业务数据读写（MySQL 同库，查询均带 room_id 过滤）。
+    表：profiles / messages / blacklist / favorites / message_audit
+    视图：v_message_stats / v_message_type_stats
+    触发器：trg_message_delete_audit
+    存储过程：sp_get_message_stats / sp_cleanup_old_messages / sp_get_audit_log
     """
 
-    def __init__(self, path, room_id):
+    def __init__(self, room_id):
         self.room_id = room_id
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self._conn = _mysql_connect()
         self.max_history = MAX_HISTORY   # 由 ChatRoom 初始化时用房间配置覆盖
-        self._init_schema()
-        self._migrate()                  # 旧库补 room_id 列
-
-    def _init_schema(self):
-        """建 5 张业务表 + 删除审计触发器 + 2 个统计视图。"""
-        with self._lock, self._conn:
-            self._conn.executescript("""
-                CREATE TABLE IF NOT EXISTS profiles (
-                    room_id TEXT NOT NULL, 
-                    device_id TEXT NOT NULL, 
-                    nickname TEXT NOT NULL,
-                    avatar TEXT, color TEXT, 
-                    muted_until REAL NOT NULL DEFAULT 0,
-                    PRIMARY KEY (room_id, device_id)
-                );
-                CREATE TABLE IF NOT EXISTS messages (
-                    room_id TEXT NOT NULL, 
-                    id TEXT NOT NULL, 
-                    type TEXT, 
-                    content TEXT, 
-                    sender TEXT,
-                    user_id TEXT, 
-                    is_admin INTEGER NOT NULL DEFAULT 0,
-                    avatar TEXT, 
-                    color TEXT, 
-                    timestamp REAL,
-                    file_name TEXT, 
-                    file_size INTEGER,
-                    PRIMARY KEY (room_id, id)
-                );
-                CREATE TABLE IF NOT EXISTS blacklist (
-                    room_id TEXT NOT NULL, 
-                    device_id TEXT NOT NULL, 
-                    nickname TEXT,
-                    ip TEXT, 
-                    created_at REAL,
-                    PRIMARY KEY (room_id, device_id)
-                );
-                CREATE TABLE IF NOT EXISTS favorites (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                    room_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL, 
-                    msg_id TEXT, 
-                    msg_type TEXT, 
-                    content TEXT,
-                    sender TEXT, 
-                    file_name TEXT, 
-                    file_size INTEGER, 
-                    created_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS message_audit (
-                    audit_id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                    room_id TEXT NOT NULL,
-                    message_id TEXT, 
-                    type TEXT, 
-                    content TEXT, 
-                    sender TEXT,
-                    user_id TEXT, 
-                    deleted_at REAL, 
-                    action TEXT
-                );
-            """)
-            # 触发器：messages 被 DELETE 时自动写入审计表（管理端"审计日志"数据来源）
-            # 视图：按用户/按类型聚合消息，供管理端"数据统计"页使用
-            self._conn.executescript("""
-                CREATE TRIGGER IF NOT EXISTS trg_message_delete_audit
-                AFTER DELETE ON messages BEGIN
-                    INSERT INTO message_audit(room_id, message_id, type, content, sender, user_id, deleted_at, action)
-                    VALUES (OLD.room_id, OLD.id, OLD.type, OLD.content, OLD.sender, OLD.user_id, strftime('%s','now'), 'DELETE');
-                END;
-                CREATE VIEW IF NOT EXISTS v_message_stats AS
-                SELECT room_id, user_id, sender, COUNT(*) as message_count,
-                       MAX(timestamp) as last_active, MIN(timestamp) as first_active
-                FROM messages WHERE user_id IS NOT NULL GROUP BY room_id, user_id, sender;
-                CREATE VIEW IF NOT EXISTS v_message_type_stats AS
-                SELECT room_id, type, COUNT(*) as count FROM messages GROUP BY room_id, type;
-            """)
-
-    def _migrate(self):
-        """
-        旧版单房间库迁移：
-        1) 各表若缺 room_id 列 → ALTER 补列并把已有行回填为当前 room_id
-        2) 删除已废弃的 room_state 表（状态已迁到主库 rooms 表）
-        """
-        with self._lock, self._conn:
-            for table in ('profiles', 'messages', 'blacklist', 'favorites', 'message_audit'):
-                cols = {r[1] for r in self._conn.execute(f'PRAGMA table_info({table})')}
-                if 'room_id' not in cols:
-                    self._conn.execute(f'ALTER TABLE {table} ADD COLUMN room_id TEXT NOT NULL DEFAULT \'\'')
-                    self._conn.execute(f'UPDATE {table} SET room_id=? WHERE room_id=\'\'', (self.room_id,))
-            self._conn.execute('DROP TABLE IF EXISTS room_state')
 
     def close(self):
-        """关闭数据库连接（删除房间/全局重置时调用），忽略已关闭异常。"""
         with self._lock:
             try:
                 self._conn.close()
@@ -370,193 +461,188 @@ class Database:
                 pass
 
     def _query(self, sql, params=()):
-        """加锁执行查询。"""
         with self._lock:
-            return self._conn.execute(sql, params).fetchall()
+            with self._conn.cursor() as cur:
+                cur.execute(sql, params)
+                return cur.fetchall()
 
     def _execute(self, sql, params=()):
-        """加锁执行写语句并提交。"""
-        with self._lock, self._conn:
-            self._conn.execute(sql, params)
+        with self._lock:
+            with self._conn.cursor() as cur:
+                return cur.execute(sql, params)
 
     # ---------- 档案 profiles ----------
     def get_profile(self, device_id):
-        """按 (room_id, device_id) 读用户档案，不存在返回 None。"""
-        rows = self._query('SELECT * FROM profiles WHERE room_id=? AND device_id=?', (self.room_id, device_id))
-        return dict(rows[0]) if rows else None
+        rows = self._query('SELECT * FROM profiles WHERE room_id=%s AND device_id=%s',
+                           (self.room_id, device_id))
+        return rows[0] if rows else None
 
     def save_profile(self, device_id, nickname, avatar, color):
-        """
-        新建或整行覆盖档案（INSERT OR REPLACE）。
-        注意：旧迁移库主键可能不含 room_id，用 OR REPLACE 比 ON CONFLICT 更稳妥。
-        """
-        self._execute('INSERT OR REPLACE INTO profiles(room_id,device_id,nickname,avatar,color,muted_until) VALUES(?,?,?,?,?,0)',
-                      (self.room_id, device_id, nickname, avatar, color))
+        self._execute(
+            'INSERT INTO profiles(room_id,device_id,nickname,avatar,color,muted_until) VALUES(%s,%s,%s,%s,%s,0) '
+            'ON DUPLICATE KEY UPDATE nickname=VALUES(nickname), avatar=VALUES(avatar), color=VALUES(color), muted_until=0',
+            (self.room_id, device_id, nickname, avatar, color))
 
     def update_profile_nickname(self, device_id, nickname):
-        """仅更新昵称（加入时若昵称被改）。"""
-        self._execute('UPDATE profiles SET nickname=? WHERE room_id=? AND device_id=?', (nickname, self.room_id, device_id))
+        self._execute('UPDATE profiles SET nickname=%s WHERE room_id=%s AND device_id=%s',
+                      (nickname, self.room_id, device_id))
 
     def set_muted_until(self, device_id, muted_until):
-        """设置禁言截止时间戳（0 表示解除禁言）。"""
-        self._execute('UPDATE profiles SET muted_until=? WHERE room_id=? AND device_id=?', (muted_until, self.room_id, device_id))
+        self._execute('UPDATE profiles SET muted_until=%s WHERE room_id=%s AND device_id=%s',
+                      (muted_until, self.room_id, device_id))
 
     def get_muted_users(self):
-        """返回当前仍处于禁言中的用户档案列表。"""
-        return [dict(r) for r in self._query(
-            'SELECT device_id,nickname,avatar,color,muted_until FROM profiles WHERE room_id=? AND muted_until>?',
-            (self.room_id, time.time()))]
+        return self._query(
+            'SELECT device_id,nickname,avatar,color,muted_until FROM profiles '
+            'WHERE room_id=%s AND muted_until>%s',
+            (self.room_id, time.time()))
 
     # ---------- 消息 messages ----------
     def query_messages(self, nickname=None):
-        """
-        查询文本消息，可按昵称模糊过滤（LIKE %nick%）。
-        返回按 sender 分组的列表：[{sender, avatar, color, messages:[...]}, ...]
-        """
         if nickname:
-            rows = self._query('SELECT * FROM messages WHERE room_id=? AND sender LIKE ? AND type=? ORDER BY timestamp ASC',
-                               (self.room_id, f'%{nickname}%', 'text'))
+            rows = self._query(
+                'SELECT * FROM messages WHERE room_id=%s AND sender LIKE %s AND type=%s ORDER BY timestamp ASC',
+                (self.room_id, f'%{nickname}%', 'text'))
         else:
-            rows = self._query('SELECT * FROM messages WHERE room_id=? AND type=? ORDER BY timestamp ASC',
-                               (self.room_id, 'text'))
+            rows = self._query(
+                'SELECT * FROM messages WHERE room_id=%s AND type=%s ORDER BY timestamp ASC',
+                (self.room_id, 'text'))
         groups = {}
         for r in rows:
             msg = self._row_to_message(r)
-            groups.setdefault(msg['sender'], {'sender': msg['sender'], 'avatar': msg['avatar'], 'color': msg['color'], 'messages': []})['messages'].append(msg)
+            groups.setdefault(msg['sender'], {'sender': msg['sender'], 'avatar': msg['avatar'],
+                                              'color': msg['color'], 'messages': []})['messages'].append(msg)
         return list(groups.values())
 
     def query_files(self, nickname=None, upload_dir=None):
-        """
-        查询图片/文件消息，可按昵称过滤。
-        额外标注 file_exists：磁盘上文件是否仍存在（上传目录优先，否则退回全局 UPLOAD_ROOT）。
-        返回结构同 query_messages。
-        """
         if nickname:
-            rows = self._query('SELECT * FROM messages WHERE room_id=? AND sender LIKE ? AND type IN (?,?) ORDER BY timestamp ASC',
-                               (self.room_id, f'%{nickname}%', 'image', 'file'))
+            rows = self._query(
+                'SELECT * FROM messages WHERE room_id=%s AND sender LIKE %s AND type IN (%s,%s) ORDER BY timestamp ASC',
+                (self.room_id, f'%{nickname}%', 'image', 'file'))
         else:
-            rows = self._query('SELECT * FROM messages WHERE room_id=? AND type IN (?,?) ORDER BY timestamp ASC',
-                               (self.room_id, 'image', 'file'))
+            rows = self._query(
+                'SELECT * FROM messages WHERE room_id=%s AND type IN (%s,%s) ORDER BY timestamp ASC',
+                (self.room_id, 'image', 'file'))
         groups = {}
         for r in rows:
             msg = self._row_to_message(r)
-            fn = os.path.basename(msg.get('content', ''))
+            fn = os.path.basename(msg.get('content') or '')
             msg['file_exists'] = os.path.isfile(os.path.join(upload_dir or UPLOAD_ROOT, fn))
-            groups.setdefault(msg['sender'], {'sender': msg['sender'], 'avatar': msg['avatar'], 'color': msg['color'], 'messages': []})['messages'].append(msg)
+            groups.setdefault(msg['sender'], {'sender': msg['sender'], 'avatar': msg['avatar'],
+                                              'color': msg['color'], 'messages': []})['messages'].append(msg)
         return list(groups.values())
 
     def _row_to_message(self, r):
-        """sqlite3.Row → 前端消息 dict（统一字段格式）。"""
+        """MySQL 行(dict) → 前端消息 dict（统一字段格式）。"""
         return {'id': r['id'], 'type': r['type'], 'content': r['content'], 'sender': r['sender'],
                 'user_id': r['user_id'], 'is_admin': bool(r['is_admin']), 'avatar': r['avatar'],
-                'color': r['color'], 'timestamp': r['timestamp'], 'file_name': r['file_name'], 'file_size': r['file_size']}
+                'color': r['color'], 'timestamp': r['timestamp'],
+                'file_name': r['file_name'], 'file_size': r['file_size']}
 
     def get_recent_messages(self, limit=None):
-        """取最近 limit 条消息（按 rowid 倒序取再翻转成正序），默认 max_history。"""
-        rows = self._query('SELECT * FROM messages WHERE room_id=? ORDER BY rowid DESC LIMIT ?',
+        rows = self._query('SELECT * FROM messages WHERE room_id=%s ORDER BY seq DESC LIMIT %s',
                            (self.room_id, limit or self.max_history))
         return [self._row_to_message(r) for r in reversed(rows)]
 
     def add_message(self, msg):
-        """写入一条消息（INSERT OR REPLACE，同 id 覆盖），在锁内事务提交。"""
-        with self._lock, self._conn:
-            self._conn.execute('INSERT OR REPLACE INTO messages(room_id,id,type,content,sender,user_id,is_admin,avatar,color,timestamp,file_name,file_size) '
-                               'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
-                               (self.room_id, msg['id'], msg.get('type'), msg.get('content'), msg.get('sender'),
-                                msg.get('user_id'), int(msg.get('is_admin', False)), msg.get('avatar'),
-                                msg.get('color'), msg.get('timestamp'), msg.get('file_name'), msg.get('file_size')))
+        self._execute(
+            'INSERT INTO messages(room_id,id,type,content,sender,user_id,is_admin,avatar,color,timestamp,file_name,file_size) '
+            'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) '
+            'ON DUPLICATE KEY UPDATE type=VALUES(type), content=VALUES(content), sender=VALUES(sender), '
+            'user_id=VALUES(user_id), is_admin=VALUES(is_admin), avatar=VALUES(avatar), color=VALUES(color), '
+            'timestamp=VALUES(timestamp), file_name=VALUES(file_name), file_size=VALUES(file_size)',
+            (self.room_id, msg['id'], msg.get('type'), msg.get('content'), msg.get('sender'),
+             msg.get('user_id'), int(msg.get('is_admin', False)), msg.get('avatar'),
+             msg.get('color'), msg.get('timestamp'), msg.get('file_name'), msg.get('file_size')))
 
     # ---------- 黑名单 blacklist ----------
     def is_blacklisted(self, device_id):
-        """该 device_id 是否已被拉黑。"""
-        return bool(self._query('SELECT 1 FROM blacklist WHERE room_id=? AND device_id=?', (self.room_id, device_id)))
+        return bool(self._query('SELECT 1 AS x FROM blacklist WHERE room_id=%s AND device_id=%s',
+                                (self.room_id, device_id)))
 
     def add_blacklist(self, device_id, nickname, ip):
-        """加入黑名单（踢出用户时调用）。"""
-        self._execute('INSERT OR REPLACE INTO blacklist(room_id,device_id,nickname,ip,created_at) VALUES(?,?,?,?,?)',
-                      (self.room_id, device_id, nickname, ip, time.time()))
+        self._execute(
+            'INSERT INTO blacklist(room_id,device_id,nickname,ip,created_at) VALUES(%s,%s,%s,%s,%s) '
+            'ON DUPLICATE KEY UPDATE nickname=VALUES(nickname), ip=VALUES(ip), created_at=VALUES(created_at)',
+            (self.room_id, device_id, nickname, ip, time.time()))
 
     def remove_blacklist(self, device_id):
-        """移出黑名单，返回是否真的删了行。"""
-        with self._lock, self._conn:
-            return self._conn.execute('DELETE FROM blacklist WHERE room_id=? AND device_id=?',
-                                      (self.room_id, device_id)).rowcount > 0
+        return self._execute('DELETE FROM blacklist WHERE room_id=%s AND device_id=%s',
+                             (self.room_id, device_id)) > 0
 
     def get_blacklist(self):
-        """黑名单列表，按拉黑时间倒序。"""
-        return [dict(r) for r in self._query(
-            'SELECT device_id,nickname,ip,created_at FROM blacklist WHERE room_id=? ORDER BY created_at DESC',
-            (self.room_id,))]
+        return self._query(
+            'SELECT device_id,nickname,ip,created_at FROM blacklist WHERE room_id=%s ORDER BY created_at DESC',
+            (self.room_id,))
 
     # ---------- 收藏夹 favorites ----------
     def add_favorite(self, user_id, msg):
-        """把一条消息快照进该用户的收藏夹。"""
-        with self._lock, self._conn:
-            self._conn.execute('INSERT INTO favorites(room_id,user_id,msg_id,msg_type,content,sender,file_name,file_size,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
-                               (self.room_id, user_id, msg.get('id'), msg.get('type'), msg.get('content'),
-                                msg.get('sender'), msg.get('file_name'), msg.get('file_size'), time.time()))
+        # UNIQUE(room_id,user_id,msg_id)：重复收藏用 IGNORE 保持幂等
+        self._execute(
+            'INSERT IGNORE INTO favorites(room_id,user_id,msg_id,msg_type,content,sender,file_name,file_size,created_at) '
+            'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+            (self.room_id, user_id, msg.get('id'), msg.get('type'), msg.get('content'),
+             msg.get('sender'), msg.get('file_name'), msg.get('file_size'), time.time()))
 
     def get_favorites(self, user_id):
-        """取该用户全部收藏，按收藏时间倒序。"""
-        return [dict(r) for r in self._query(
-            'SELECT id,msg_id,msg_type,content,sender,file_name,file_size,created_at FROM favorites WHERE room_id=? AND user_id=? ORDER BY created_at DESC',
-            (self.room_id, user_id))]
+        return self._query(
+            'SELECT id,msg_id,msg_type,content,sender,file_name,file_size,created_at FROM favorites '
+            'WHERE room_id=%s AND user_id=%s ORDER BY created_at DESC',
+            (self.room_id, user_id))
 
     def remove_favorite(self, user_id, fav_id):
-        """删除指定收藏（校验 user_id + room_id 防越权），返回是否删除成功。"""
-        with self._lock, self._conn:
-            return self._conn.execute('DELETE FROM favorites WHERE id=? AND user_id=? AND room_id=?',
-                                      (fav_id, user_id, self.room_id)).rowcount > 0
+        return self._execute('DELETE FROM favorites WHERE id=%s AND user_id=%s AND room_id=%s',
+                             (fav_id, user_id, self.room_id)) > 0
 
     # ---------- 清理 / 维护 ----------
     def cleanup_old_messages(self, max_history):
-        """只保留最近 max_history 条消息，其余删除（触发器会写审计）。"""
-        with self._lock, self._conn:
-            self._conn.execute('DELETE FROM messages WHERE room_id=? AND rowid NOT IN '
-                               '(SELECT rowid FROM messages WHERE room_id=? ORDER BY rowid DESC LIMIT ?)',
-                               (self.room_id, self.room_id, max_history))
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute('CALL sp_cleanup_old_messages(%s, %s)', (self.room_id, int(max_history)))
+                while cur.nextset():
+                    pass
 
     def clear_all_messages(self):
-        """清空本房间全部消息（管理端"清空聊天记录"）。"""
-        with self._lock, self._conn:
-            self._conn.execute('DELETE FROM messages WHERE room_id=?', (self.room_id,))
+        self._execute('DELETE FROM messages WHERE room_id=%s', (self.room_id,))
 
     def factory_reset(self):
-        """房间级恢复出厂：清空消息/档案/黑名单/收藏（不动表结构）。"""
-        with self._lock, self._conn:
-            self._conn.execute('DELETE FROM messages WHERE room_id=?', (self.room_id,))
-            self._conn.execute('DELETE FROM profiles WHERE room_id=?', (self.room_id,))
-            self._conn.execute('DELETE FROM blacklist WHERE room_id=?', (self.room_id,))
-            self._conn.execute('DELETE FROM favorites WHERE room_id=?', (self.room_id,))
+        self._execute('DELETE FROM messages WHERE room_id=%s', (self.room_id,))
+        self._execute('DELETE FROM profiles WHERE room_id=%s', (self.room_id,))
+        self._execute('DELETE FROM blacklist WHERE room_id=%s', (self.room_id,))
+        self._execute('DELETE FROM favorites WHERE room_id=%s', (self.room_id,))
 
     def delete_message(self, message_id):
-        """删除单条消息（管理端删除/用户撤回共用），返回是否删到行。"""
-        with self._lock, self._conn:
-            return self._conn.execute('DELETE FROM messages WHERE room_id=? AND id=?',
-                                      (self.room_id, message_id)).rowcount > 0
+        return self._execute('DELETE FROM messages WHERE room_id=%s AND id=%s',
+                             (self.room_id, message_id)) > 0
 
     def get_message_by_id(self, message_id):
-        """按消息 id 查询（撤回/删除前校验归属与存在性）。"""
-        rows = self._query('SELECT * FROM messages WHERE room_id=? AND id=?', (self.room_id, message_id))
-        return dict(rows[0]) if rows else None
+        rows = self._query('SELECT * FROM messages WHERE room_id=%s AND id=%s',
+                           (self.room_id, message_id))
+        return rows[0] if rows else None
 
-    # ---------- 存储过程风格统计（课程数据库设计展示） ----------
+    # ---------- 存储过程（课程数据库设计展示） ----------
     def sp_get_message_stats(self):
-        """消息统计：总数 + 按用户视图 + 按类型视图（类型附百分比）。"""
-        total = self._query('SELECT COUNT(*) as cnt FROM messages WHERE room_id=?', (self.room_id,))[0]['cnt']
-        user_stats = [dict(r) for r in self._query(
-            'SELECT * FROM v_message_stats WHERE room_id=? ORDER BY message_count DESC', (self.room_id,))]
-        type_stats = [dict(r) for r in self._query(
-            'SELECT * FROM v_message_type_stats WHERE room_id=? ORDER BY count DESC', (self.room_id,))]
-        for t in type_stats:
-            t['percentage'] = round(t['count'] / total * 100, 1) if total else 0
-        return {'total_messages': total, 'user_stats': user_stats, 'type_stats': type_stats}
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute('CALL sp_get_message_stats(%s)', (self.room_id,))
+                total_row = cur.fetchone()
+                total = (total_row or {}).get('total_messages', 0)
+                user_stats = []
+                type_stats = []
+                if cur.nextset():
+                    user_stats = list(cur.fetchall() or [])
+                if cur.nextset():
+                    type_stats = list(cur.fetchall() or [])
+                return {'total_messages': total, 'user_stats': user_stats, 'type_stats': type_stats}
 
     def sp_get_audit_log(self, limit=50):
-        """消息删除审计日志，按 audit_id 倒序取 limit 条。"""
-        return [dict(r) for r in self._query(
-            'SELECT * FROM message_audit WHERE room_id=? ORDER BY audit_id DESC LIMIT ?',
-            (self.room_id, limit))]
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute('CALL sp_get_audit_log(%s, %s)', (self.room_id, int(limit)))
+                rows = cur.fetchall()
+                while cur.nextset():
+                    pass
+                return list(rows or [])
 
 
 # ==================== 广播层（SSE 事件分发） ====================
@@ -1000,10 +1086,9 @@ class RoomManager:
             room_info = db_manager.get_room(room_id)
             if not room_info:
                 return None
-            db_path = room_db_path(room_id)
             uploads_dir = room_uploads_dir(room_id)
             os.makedirs(uploads_dir, exist_ok=True)
-            _db = Database(db_path, room_id)
+            _db = Database(room_id)
             _broadcaster = Broadcaster()
             _room = ChatRoom(_db, _broadcaster, uploads_dir, room_id, db_manager)
             self._rooms[room_id] = _room
@@ -1023,7 +1108,8 @@ os.makedirs(UPLOAD_ROOT, exist_ok=True)
 os.makedirs(QR_DIR, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, 'static'), exist_ok=True)
 
-db_manager = DatabaseManager(DB_FILE)   # 主库单例
+ensure_mysql_schema()          # 幂等建库/建表/视图/触发器/存储过程
+db_manager = DatabaseManager() # 主库单例
 room_manager = RoomManager()            # 房间实例缓存单例
 
 
@@ -1261,8 +1347,8 @@ def api_global_reset():
     全局恢复出厂（需 admin 会话 + 当前管理员密码）。
     步骤：
       1) 关闭所有房间实例的 DB 连接并清空缓存
-      2) 删除所有 room_*.db、uploads_* 目录、二维码 PNG
-      3) 主库 rooms 表只保留重建的 room_default
+      2) 删除所有 uploads_* 目录、二维码 PNG（旧 SQLite room_*.db 一并清理）
+      3) 业务表随 rooms 外键 CASCADE 清空；message_audit 无外键需显式删除
       4) 管理员密码重置为 ADMIN，重建默认房间并生成二维码
     """
     err = _require_admin()
@@ -1279,7 +1365,7 @@ def api_global_reset():
             except Exception:
                 pass
         room_manager._rooms.clear()
-    # 删除所有房间 DB 文件和上传目录
+    # 删除旧 SQLite 房间库文件（迁移遗留）和上传目录
     for f in glob.glob(os.path.join(BASE_DIR, 'room_*.db')):
         try:
             os.remove(f)
@@ -1294,13 +1380,13 @@ def api_global_reset():
             os.remove(f)
         except Exception:
             pass
-    # 重置 rooms 表：只保留默认房间
-    with db_manager._lock, db_manager._conn:
-        db_manager._conn.execute('DELETE FROM rooms')
-        db_manager._conn.execute(
-            'INSERT INTO rooms(room_id, room_name, is_open, password, file_limit_mb, max_history, recall_time_limit, created_at) '
-            'VALUES(?,?,?,?,?,?,?,?)',
-            ('room_default', '在线匿名聊天室', 1, None, 0, 200, 300, time.time()))
+    # 重置数据：业务表靠外键 CASCADE 清空，审计表显式清空，再重建默认房间
+    db_manager._execute('DELETE FROM message_audit')
+    db_manager._execute('DELETE FROM rooms')
+    db_manager._execute(
+        'INSERT INTO rooms(room_id, room_name, is_open, password, file_limit_mb, max_history, recall_time_limit, created_at) '
+        'VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
+        ('room_default', '在线匿名聊天室', 1, None, 0, 200, 300, time.time()))
     # 重置管理员密码为默认
     db_manager.set_config('admin_password', 'ADMIN')
     # 重建默认房间
@@ -1462,7 +1548,7 @@ def api_favorites_add():
     msg = g.room.db.get_message_by_id(msg_id)
     if not msg:
         return jsonify({'error': '消息不存在'}), 404
-    g.room.db.add_favorite(user_id, dict(msg))
+    g.room.db.add_favorite(user_id, msg)
     return jsonify({'success': True}), 200
 
 
