@@ -1,4 +1,35 @@
 <!DOCTYPE html>
+<!--
+  index.html — 聊天室主页面（核心模板）
+  ========================================
+  由 GET /room/<room_id>/ 渲染，Jinja2 变量：
+    room_name     房间名称
+    room_id       房间 ID（拼 roomBase = /room/<id>）
+    is_admin      是否管理员模式（?admin=1 且 session 为 admin）
+    has_password  房间是否设了加入密码
+
+  页面结构（自上而下）：
+    1. #join-overlay   加入遮罩（昵称 + 可选密码 → POST /api/join）
+    2. #chat-container 聊天容器
+         .chat-header  顶栏（房间名 / 管理或更多面板入口 / 在线人数 / 退出）
+         .messages     消息流（SSE 推送渲染）
+         .input-area   输入区（文本 + 文件 + 发送）
+    3. #image-lightbox 图片放大查看层
+    4. #msg-context-menu 消息右键菜单（收藏 / 撤回 / 删除）
+
+  管理员（is_admin=true）额外渲染：
+    #admin-window 可拖拽管理面板（房间设置 / 用户管理 / 数据查询 / 收藏夹 4 个 Tab）
+  普通用户渲染：
+    #more-window 可拖拽"更多"面板（聊天记录 / 聊天文件 / 收藏夹 3 个 Tab）
+
+  实时通信：EventSource 连接 /room/<id>/stream（SSE），
+  消息/用户列表/房间事件均由此推送；页面关闭时 sendBeacon 调 /api/leave。
+
+  身份模型：
+    deviceId   localStorage 持久化的设备唯一 ID（档案/黑名单维度）
+    userId     每次加入会话随机生成（user_ / admin_ 前缀），仅本次会话有效
+    nickname   昵称，加入后存 localStorage
+-->
 <html lang="zh-CN">
 
 <head>
@@ -6,6 +37,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ room_name }} - 在线匿名聊天室</title>
     <style>
+        /* ===== 全局重置 + 页面骨架 =====
+           body 全屏 flex 纵向布局：顶栏固定高度，消息区 flex:1 滚动，输入区贴底 */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -575,7 +608,9 @@
             opacity: 0.8;
         }
 
-        /* ===== 更多/管理 面板 Tab ===== */
+        /* ===== 管理面板 / 更多面板 Tab 通用样式 =====
+           .admin-tab / .more-tab：顶部切换按钮
+           .admin-tab-content / .more-tab-content：对应面板内容区 */
         .more-tab,
         .admin-tab {
             flex: 1;
@@ -684,7 +719,7 @@
             background: rgba(255, 255, 255, 0.35);
         }
 
-        /* ===== 右键菜单 ===== */
+        /* ===== 右键菜单（收藏 / 撤回 / 删除）项 ===== */
         #msg-context-menu .ctx-item:hover {
             background: #f5f5f5;
         }
@@ -696,6 +731,10 @@
 </head>
 
 <body>
+    <!-- ============================================================
+         1. 加入遮罩：进入聊天前填写昵称（和可选房间密码）
+         管理员模式下昵称固定 admin 只读；房间有密码时显示密码框
+         ============================================================ -->
     <div id="join-overlay">
         <div class="join-box">
             <h2>加入 {{ room_name }}</h2>
@@ -708,11 +747,18 @@
         </div>
     </div>
 
+    <!-- ============================================================
+         2. 聊天主容器（加入成功后才显示 display:flex）
+            顶栏 → 消息流 → 输入区
+         ============================================================ -->
     <div id="chat-container" style="display:none;">
+        <!-- 顶栏：房间标题 + 管理/更多面板开关 + 在线人数 + 退出 -->
         <div class="chat-header">
             <div>
                 <span class="room-title" id="room-title">{{ room_name }}</span>
                 {% if is_admin %}
+                <!-- ===== 管理员：管理面板开关 + 可拖拽管理窗口 =====
+                     4 个 Tab：房间设置 / 用户管理 / 数据查询 / 收藏夹 -->
                 <button id="admin-panel-toggle" style="margin-left:10px; background:#12b7f5; color:white;">管理</button>
                 <div id="admin-window" class="dock-window">
                     <div class="dock-header" id="admin-dock-header">
@@ -722,6 +768,7 @@
                         </div>
                     </div>
                     <div class="dock-body">
+                        <!-- Tab 切换按钮组 -->
                         <div
                             style="display:flex; gap:6px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #f0f0f0;">
                             <button id="admin-tab-settings" class="admin-tab active"
@@ -733,6 +780,8 @@
                             <button id="admin-tab-fav" class="admin-tab"
                                 style="flex:1;padding:6px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:500;">收藏夹</button>
                         </div>
+
+                        <!-- Tab：房间设置（名称/密码/开关/限额/保留条数/撤回时限/清空/出厂） -->
                         <div id="admin-tab-content-settings" class="admin-tab-content">
                             <div class="admin-section">
                                 <h4>房间名称</h4>
@@ -774,6 +823,7 @@
                                     style="background:#f56c6c; margin-left:6px;">恢复出厂设置</button>
                             </div>
                         </div>
+                        <!-- Tab：用户管理（在线列表 / 禁言名单 / 黑名单） -->
                         <div id="admin-tab-content-users" class="admin-tab-content" style="display:none;">
                             <div class="admin-section">
                                 <h4 style="display:flex;align-items:center;justify-content:space-between;">在线用户 <button
@@ -794,6 +844,7 @@
                                 <div id="blacklist-container"></div>
                             </div>
                         </div>
+                        <!-- Tab：数据查询（统计视图 / 审计日志 / 消息搜索 / 文件搜索） -->
                         <div id="admin-tab-content-query" class="admin-tab-content" style="display:none;">
                             <div class="admin-section">
                                 <h4 style="display:flex;align-items:center;justify-content:space-between;">数据统计 <button
@@ -828,6 +879,7 @@
                                 <div id="admin-files-results"></div>
                             </div>
                         </div>
+                        <!-- Tab：收藏夹（管理员自己的收藏） -->
                         <div id="admin-tab-content-fav" class="admin-tab-content" style="display:none;">
                             <div class="admin-section">
                                 <h4 style="display:flex;align-items:center;justify-content:space-between;">我的收藏 <button
@@ -840,6 +892,8 @@
                     <div class="dock-resize-handle" id="admin-resize"></div>
                 </div>
                 {% else %}
+                <!-- ===== 普通用户：更多面板开关 + 可拖拽更多窗口 =====
+                     3 个 Tab：聊天记录 / 聊天文件 / 收藏夹 -->
                 <button id="more-panel-toggle" style="margin-left:10px; background:#12b7f5; color:white;">更多</button>
                 <div id="more-window" class="dock-window">
                     <div class="dock-header" id="more-dock-header">
@@ -858,6 +912,7 @@
                             <button id="tab-favorites" class="more-tab"
                                 style="flex:1;padding:7px;border:1px solid #dcdfe6;background:white;color:#333;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:500;">收藏夹</button>
                         </div>
+                        <!-- Tab：聊天记录（昵称搜索） -->
                         <div id="more-tab-chat-history" class="more-tab-content">
                             <div style="margin-bottom:10px;">
                                 <input type="text" id="history-search-nick" placeholder="输入昵称搜索..."
@@ -867,6 +922,7 @@
                             </div>
                             <div id="history-results"></div>
                         </div>
+                        <!-- Tab：聊天文件（昵称搜索） -->
                         <div id="more-tab-chat-files" class="more-tab-content" style="display:none;">
                             <div style="margin-bottom:10px;">
                                 <input type="text" id="files-search-nick" placeholder="输入昵称搜索..."
@@ -876,6 +932,7 @@
                             </div>
                             <div id="files-results"></div>
                         </div>
+                        <!-- Tab：收藏夹 -->
                         <div id="more-tab-favorites" class="more-tab-content" style="display:none;">
                             <div style="margin-bottom:10px;">
                                 <button id="load-fav-btn"
@@ -888,13 +945,18 @@
                 </div>
                 {% endif %}
             </div>
+            <!-- 右侧：在线人数 + 退出 -->
             <div>
                 <span id="online-info">在线：0人</span>
                 <button id="exit-btn"
                     style="margin-left:10px; background:#f15c5c; color:#464343; border:1px solid #e8e8e8;">退出</button>
             </div>
         </div>
+
+        <!-- 消息流容器（appendMessage 动态插入 .message / .system-msg） -->
         <div class="messages" id="messages"></div>
+
+        <!-- 输入区：多行文本 + 文件按钮 + 发送按钮；隐藏的 file input 由 📎 触发 -->
         <div class="input-area">
             <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
             <button id="file-btn" title="发送文件/图片">📎</button>
@@ -905,13 +967,19 @@
         </div>
     </div>
 
+    <!-- ============================================================
+         3. 图片 Lightbox：点击聊天中图片全屏查看，可下载
+         ============================================================ -->
     <div id="image-lightbox">
         <span id="lightbox-close">&times;</span>
         <img id="lightbox-img" src="">
         <a id="lightbox-download" href="" download>下载</a>
     </div>
 
-    <!-- 右键菜单 -->
+    <!-- ============================================================
+         4. 消息右键菜单：收藏（所有人）/ 撤回（自己的限时消息）/ 删除（管理员）
+         具体项的显示/隐藏由 initContextMenu() 按消息属性控制
+         ============================================================ -->
     <div id="msg-context-menu" style="display:none; position:fixed; z-index:999;
             background:#fff; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.18);
             min-width:120px; overflow:hidden;">
@@ -930,6 +998,9 @@
     </div>
 
     <script>
+        /* ============================================================
+           身份与全局状态
+           ============================================================ */
 
         // 设备唯一 ID：首次访问生成并永久保存在 localStorage，作为用户身份标识（IP 变化不影响）
         let deviceId = localStorage.getItem('chat_device_id');
@@ -940,15 +1011,18 @@
             localStorage.setItem('chat_device_id', deviceId);
         }
 
-        let userId = localStorage.getItem('chat_user_id');
-        let nickname = localStorage.getItem('chat_nickname');
+        let userId = localStorage.getItem('chat_user_id');     // 会话 user_id（加入后由服务器下发覆盖）
+        let nickname = localStorage.getItem('chat_nickname');  // 上次使用的昵称
         let fileLimitMb = 0;   // 单文件大小上限（MB），0 = 不限；加入时由服务器下发
         const isAdmin = {{ 'true' if is_admin else 'false' }};
         const hasPassword = {{ 'true' if has_password else 'false' }};
         const roomId = '{{ room_id }}';
-        const roomBase = '/room/' + roomId;
-        let eventSource = null;
+        const roomBase = '/room/' + roomId;   // 本房间所有 API 的公共前缀
+        let eventSource = null;               // SSE 连接句柄
 
+        /* ============================================================
+           DOM 引用（加入遮罩 + 聊天主界面常用元素）
+           ============================================================ */
         const joinOverlay = document.getElementById('join-overlay');
         const joinError = document.getElementById('join-error');
         const nicknameInput = document.getElementById('nickname-input');
@@ -962,6 +1036,10 @@
         const fileBtn = document.getElementById('file-btn');
         const anyFileInput = document.getElementById('any-file-input');
 
+        /* ============================================================
+           初始化：按设备 ID 拉档案，自动回填上次昵称
+           （管理员模式固定 admin 只读）
+           ============================================================ */
         async function init() {
             try {
                 // 按设备 ID 拉取档案，自动回填上次使用的昵称
@@ -980,6 +1058,9 @@
 
         init();
 
+        /* ============================================================
+           加入房间
+           ============================================================ */
         joinBtn.addEventListener('click', function () {
             const nick = nicknameInput.value.trim();
             // 管理员免密码进入，不收集密码框
@@ -991,6 +1072,7 @@
             joinChat(nick, password);
         });
 
+        // POST /api/join → 成功后隐藏遮罩、显示聊天区、初始化 SSE 与管理面板
         function joinChat(nick, password) {
             fetch(roomBase + '/api/join', {
                 method: 'POST',
@@ -1006,6 +1088,7 @@
                         localStorage.setItem('chat_nickname', nickname);
                         fileLimitMb = data.file_limit_mb || 0;
                         joinOverlay.style.display = 'none';
+                        // 若仍处于禁言状态，提示剩余秒数
                         if (data.muted_remaining > 0) alert(`您仍处于禁言状态，剩余 ${data.muted_remaining} 秒`);
                         chatContainer.style.display = 'flex';
                         if (isAdmin) {
@@ -1022,6 +1105,18 @@
                 });
         }
 
+        /* ============================================================
+           SSE 实时通信：连接 /stream 并按事件类型分发处理
+           事件一览：
+             message / history      → 渲染消息气泡
+             user_list              → 更新在线人数
+             room_name              → 同步房间标题
+             user_kicked / muted    → 被踢/被禁言提示并刷新
+             file_limit             → 实时同步文件限额
+             room_closed / password → 踢出并要求重新加入
+             history_cleared / factory_reset / max_history → 管理操作广播
+             message_deleted / recalled → DOM 移除 + 系统提示
+           ============================================================ */
         function initChat() {
             eventSource = new EventSource(roomBase + '/stream');
             eventSource.onmessage = function (event) {
@@ -1031,6 +1126,7 @@
                 } else if (data.type === 'user_list') {
                     updateOnlineUsers(data);
                 } else if (data.type === 'history') {
+                    // 首包历史消息：批量渲染后滚到底
                     data.messages.forEach(msg => appendMessage(msg, true));
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                 } else if (data.type === 'room_name') {
@@ -1071,7 +1167,7 @@
                     // 消息保留条数被修改
                     alert(`消息保留条数已改为 ${data.max_history}`);
                 } else if (data.type === 'message_deleted') {
-                    // 消息被管理员删除
+                    // 消息被管理员删除：优先按 data-msg-id 选择器移除
                     const msgId = data.message_id;
                     const msgEl = messagesDiv.querySelector(`[data-msg-id="${msgId}"]`);
                     if (msgEl) {
@@ -1083,7 +1179,7 @@
                         });
                     }
                 } else if (data.type === 'message_recalled') {
-                    // 消息被撤回
+                    // 消息被撤回：移除 DOM 并插入系统提示
                     const msgId = data.message_id;
                     messagesDiv.querySelectorAll('.message').forEach(el => {
                         if (el.dataset.msgId === msgId) el.remove();
@@ -1099,14 +1195,16 @@
                 }
             };
 
+            /* ---------- 输入区事件绑定 ---------- */
             sendBtn.addEventListener('click', sendMessage);
+            // Enter 发送（Shift+Enter 换行）
             messageInput.addEventListener('keypress', e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
             });
             fileBtn.addEventListener('click', () => anyFileInput.click());
             anyFileInput.addEventListener('change', handleFileUpload);
 
-            // "更多"面板（普通用户使用）
+            /* ---------- 普通用户："更多"面板（记录/文件/收藏） ---------- */
             if (!isAdmin) {
                 const moreToggle = document.getElementById('more-panel-toggle');
                 const moreDropdown = document.getElementById('more-window');
@@ -1125,7 +1223,7 @@
                 document.getElementById('tab-chat-files').addEventListener('click', () => switchMoreTab('chat-files'));
                 document.getElementById('tab-favorites').addEventListener('click', () => { switchMoreTab('favorites'); loadFavorites('fav-results'); });
                 document.getElementById('load-fav-btn').addEventListener('click', () => loadFavorites('fav-results'));
-                // 搜索按钮
+                // 搜索按钮（点击 / 回车均触发）
                 document.getElementById('history-search-btn').addEventListener('click', () => {
                     searchChatHistory('history-search-nick', 'history-results');
                 });
@@ -1143,16 +1241,19 @@
                 searchChatFiles('files-search-nick', 'files-results');
             }
 
-            // 退出按钮：关闭网页
+            /* ---------- 退出按钮：离开房间，回到房间列表页 ---------- */
+            // beforeunload 会自动 sendBeacon 调 /api/leave 通知服务器离线
             document.getElementById('exit-btn').addEventListener('click', () => {
                 if (confirm('确定要退出聊天室吗？')) {
-                    window.close();
-                    // 如果 window.close() 无效（浏览器限制），刷新页面
-                    location.reload();
+                    location.href = '/rooms';
                 }
             });
         }
 
+        /* ============================================================
+           消息发送
+           ============================================================ */
+        // 发送文本消息：POST /api/send type=text
         function sendMessage() {
             const content = messageInput.value.trim();
             if (!content) return;
@@ -1164,8 +1265,10 @@
             messageInput.value = '';
         }
 
+        // 前端识别的图片扩展名（与后端 IMAGE_EXTS 对齐 + svg）
         const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg']);
 
+        // 文件选择变化：校验限额 → 按扩展名分 image/file → 上传并发送
         function handleFileUpload() {
             const file = anyFileInput.files[0];
             if (!file) return;
@@ -1189,6 +1292,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
+                        // 上传成功 → 用返回的 URL 发一条 image/file 消息
                         fetch(roomBase + '/api/send', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1201,6 +1305,11 @@
                 }).catch(() => alert('上传失败（网络错误或文件过大）'));
         }
 
+        /* ============================================================
+           消息渲染
+           ============================================================ */
+        // 把一条消息（或系统消息）插入消息流。
+        // isHistory=true 表示来自 SSE history 首包：不滚底、不重复写 localStorage。
         function appendMessage(msg, isHistory = false) {
             const isSelf = (msg.sender === nickname);
             const msgDiv = document.createElement('div');
@@ -1223,6 +1332,7 @@
                 if (msg.is_admin) sender += ' (admin)';
                 const time = new Date(msg.timestamp * 1000).toLocaleTimeString('zh-CN');
 
+                // 自己的消息不显示发送者行（右侧对齐已有视觉区分）
                 const senderLine = isSelf ? '' : `<div class="sender-line">${escapeHtml(sender)}</div>`;
                 msgDiv.innerHTML = `
                     <div class="avatar-box">${avatar}</div>
@@ -1256,6 +1366,7 @@
             return escapeHtml(msg.content);
         }
 
+        // 字节数 → 人类可读大小（B / KB / MB / GB）
         function formatFileSize(bytes) {
             if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
             if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
@@ -1263,7 +1374,9 @@
             return bytes + ' B';
         }
 
-        // ===== 图片 Lightbox 放大查看 =====
+        /* ============================================================
+           图片 Lightbox：全屏查看 + 下载，Esc/点击遮罩关闭
+           ============================================================ */
         function openLightbox(src, name) {
             const lb = document.getElementById('image-lightbox');
             const img = document.getElementById('lightbox-img');
@@ -1283,15 +1396,21 @@
             document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('active'); });
         })();
 
-        // ===== 右键菜单 =====
+        /* ============================================================
+           消息右键菜单：收藏 / 撤回 / 删除
+           显示规则：
+             收藏 → 所有消息
+             撤回 → 仅自己的消息且在时限内（前端预判 300s，以后端配置为准）
+             删除 → 仅管理员
+           ============================================================ */
         (function initContextMenu() {
             const menu = document.getElementById('msg-context-menu');
             const ctxFavorite = menu.querySelector('[data-action="favorite"]');
             const ctxRecall = menu.querySelector('[data-action="recall"]');
             const ctxDelete = menu.querySelector('[data-action="delete"]');
-            let currentMsgDiv = null;
+            let currentMsgDiv = null;   // 当前右键选中的消息 DOM
 
-            // 右键点击消息气泡
+            // 右键点击消息气泡 → 记录目标并按属性显示/隐藏菜单项
             messagesDiv.addEventListener('contextmenu', (e) => {
                 const msgDiv = e.target.closest('.message');
                 if (!msgDiv || !msgDiv.dataset.msgId) return;
@@ -1309,24 +1428,24 @@
                 // 删除：仅管理员
                 ctxDelete.style.display = isAdmin ? 'flex' : 'none';
 
-                // 定位菜单
+                // 定位菜单（贴鼠标位置）
                 let x = e.clientX, y = e.clientY;
                 menu.style.left = x + 'px';
                 menu.style.top = y + 'px';
                 menu.style.display = 'block';
-                // 边界修正
+                // 边界修正：防止菜单超出视口
                 const rect = menu.getBoundingClientRect();
                 if (rect.right > window.innerWidth) menu.style.left = (x - rect.width) + 'px';
                 if (rect.bottom > window.innerHeight) menu.style.top = (y - rect.height) + 'px';
             });
 
-            // 关闭菜单
+            // 关闭菜单：点击任意处 / 在非消息上右键
             document.addEventListener('click', () => { menu.style.display = 'none'; });
             document.addEventListener('contextmenu', (e) => {
                 if (!e.target.closest('.message')) menu.style.display = 'none';
             });
 
-            // 收藏
+            // 收藏 → POST /api/favorites/add
             ctxFavorite.addEventListener('click', () => {
                 if (!currentMsgDiv) return;
                 const msgId = currentMsgDiv.dataset.msgId;
@@ -1341,7 +1460,7 @@
                 menu.style.display = 'none';
             });
 
-            // 撤回
+            // 撤回 → confirm 后 POST /api/recall_message
             ctxRecall.addEventListener('click', () => {
                 if (!currentMsgDiv) return;
                 if (!confirm('确定撤回此消息？')) return;
@@ -1353,7 +1472,7 @@
                 menu.style.display = 'none';
             });
 
-            // 删除
+            // 删除（管理员）→ confirm 后 POST /api/admin/delete_message
             ctxDelete.addEventListener('click', () => {
                 if (!currentMsgDiv) return;
                 if (!confirm('确定删除此消息？')) return;
@@ -1366,14 +1485,22 @@
             });
         })();
 
+        // 更新顶栏在线人数（user_list 事件触发）
         function updateOnlineUsers(data) {
             const total = (data.users?.length || 0) + (data.admin_users?.length || 0);
             onlineInfo.textContent = `在线：${total}人`;
         }
 
+        /* ============================================================
+           管理面板（is_admin 时初始化）
+           - 打开面板时回填房间设置当前值
+           - Tab 切换懒加载对应数据
+           - 绑定各设置按钮 → 对应 /api/admin/* 接口
+           ============================================================ */
         function initAdminPanel() {
             const toggleBtn = document.getElementById('admin-panel-toggle');
             const dropdown = document.getElementById('admin-window');
+            // 打开面板：默认切到"房间设置"并回填限额/保留条数/撤回时限
             toggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const isOpen = dropdown.classList.toggle('open');
@@ -1385,7 +1512,7 @@
                 }
             });
             document.getElementById('close-admin-panel').addEventListener('click', () => dropdown.classList.remove('open'));
-            // Tab 切换
+            // Tab 切换：进入各 Tab 时按需拉取数据
             document.querySelectorAll('.admin-tab').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const tab = btn.id.replace('admin-tab-', '');
@@ -1395,8 +1522,11 @@
                     if (tab === 'fav') { loadFavorites('admin-fav-results'); }
                 });
             });
+            // 收藏夹刷新
             document.getElementById('admin-load-fav-btn').addEventListener('click', () => loadFavorites('admin-fav-results'));
+            // 用户管理刷新
             document.getElementById('refresh-users-btn').addEventListener('click', () => { loadAdminUsers(); loadBlacklist(); loadMutedUsers(); });
+            // 房间设置各按钮
             document.getElementById('save-room-name').addEventListener('click', saveRoomName);
             document.getElementById('set-password-btn').addEventListener('click', setPassword);
             document.getElementById('clear-password-btn').addEventListener('click', clearPassword);
@@ -1406,16 +1536,19 @@
             document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
             document.getElementById('factory-reset-btn').addEventListener('click', factoryReset);
             document.getElementById('set-recall-time-btn').addEventListener('click', setRecallTimeLimit);
+            // 数据查询：统计 / 审计 / 禁言 / 黑名单 刷新
             document.getElementById('load-stats-btn').addEventListener('click', loadStats);
             document.getElementById('load-audit-btn').addEventListener('click', loadAuditLog);
             document.getElementById('load-muted-btn').addEventListener('click', loadMutedUsers);
             document.getElementById('load-blacklist-btn').addEventListener('click', loadBlacklist);
+            // 消息搜索（点击 / 回车）
             document.getElementById('admin-history-search-btn').addEventListener('click', () => {
                 searchChatHistory('admin-history-nick', 'admin-history-results');
             });
             document.getElementById('admin-history-nick').addEventListener('keypress', e => {
                 if (e.key === 'Enter') searchChatHistory('admin-history-nick', 'admin-history-results');
             });
+            // 文件搜索（点击 / 回车）
             document.getElementById('admin-files-search-btn').addEventListener('click', () => {
                 searchChatFiles('admin-files-nick', 'admin-files-results');
             });
@@ -1424,6 +1557,10 @@
             });
         }
 
+        /* ============================================================
+           房间设置：文件限额 / 保留条数 / 撤回时限 / 清空 / 出厂
+           （打开面板时 load* 回填当前值，点击按钮调 set* 提交）
+           ============================================================ */
         // 打开管理面板时回填当前单文件限额
         function loadFileLimit() {
             fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
@@ -1432,6 +1569,7 @@
             });
         }
 
+        // 提交单文件限额（0 = 不限制）
         function setFileLimit() {
             const val = parseInt(document.getElementById('file-limit-input').value, 10);
             if (isNaN(val) || val < 0) { alert('请输入不小于 0 的整数（0 = 不限制）'); return; }
@@ -1447,12 +1585,14 @@
             });
         }
 
+        // 回填消息保留条数
         function loadMaxHistory() {
             fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 document.getElementById('max-history-input').value = data.max_history || 200;
             });
         }
 
+        // 提交消息保留条数（≥10，后端会裁剪旧消息）
         function setMaxHistory() {
             const val = parseInt(document.getElementById('max-history-input').value, 10);
             if (isNaN(val) || val < 10) { alert('请输入不小于 10 的整数'); return; }
@@ -1467,6 +1607,7 @@
             });
         }
 
+        // 清空全部聊天记录（confirm 确认）
         function clearHistory() {
             if (!confirm('确定要清空所有聊天记录吗？此操作不可恢复！')) return;
             fetch(roomBase + '/api/admin/clear_history', {
@@ -1481,6 +1622,7 @@
             });
         }
 
+        // 房间级恢复出厂（双重 confirm：清数据 + 配置回默认，不删房间）
         function factoryReset() {
             if (!confirm('确定要恢复出厂设置吗？\n\n将清空：聊天记录、用户档案、黑名单、上传文件\n房间设置将恢复默认\n\n此操作不可恢复！')) return;
             if (!confirm('再次确认：真的要恢复出厂设置吗？')) return;
@@ -1496,12 +1638,14 @@
             });
         }
 
+        // 回填撤回时限
         function loadRecallTimeLimit() {
             fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 document.getElementById('recall-time-input').value = data.recall_time_limit || 300;
             });
         }
 
+        // 提交撤回时限（0 = 禁止撤回）
         function setRecallTimeLimit() {
             const val = parseInt(document.getElementById('recall-time-input').value, 10);
             if (isNaN(val) || val < 0) { alert('请输入不小于 0 的整数（0 = 不允许撤回）'); return; }
@@ -1516,6 +1660,10 @@
             });
         }
 
+        /* ============================================================
+           数据查询 Tab：统计视图 + 审计日志
+           ============================================================ */
+        // 加载消息统计（总数 + v_message_stats 用户表 + v_message_type_stats 类型表）
         function loadStats() {
             fetch(roomBase + '/api/admin/message_stats').then(res => res.json()).then(data => {
                 const container = document.getElementById('stats-container');
@@ -1553,6 +1701,7 @@
             });
         }
 
+        // 加载消息删除审计日志（最近 20 条）
         function loadAuditLog() {
             fetch(roomBase + '/api/admin/audit_log?limit=20').then(res => res.json()).then(data => {
                 const container = document.getElementById('audit-container');
@@ -1572,6 +1721,10 @@
             });
         }
 
+        /* ============================================================
+           用户管理 Tab：在线列表 / 禁言 / 踢出 / 黑名单 / 禁言名单
+           ============================================================ */
+        // 加载在线用户列表，每行附"禁言/踢出"按钮（管理员行不显示操作）
         function loadAdminUsers() {
             fetch(roomBase + '/api/admin/online_users', {
                 method: 'POST',
@@ -1629,6 +1782,7 @@
             });
         }
 
+        // 加载黑名单（设备 ID 维度，展示踢出时的昵称和 IP），附"解除"按钮
         function loadBlacklist() {
             fetch(roomBase + '/api/admin/blacklist?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
                 const container = document.getElementById('blacklist-container');
@@ -1647,9 +1801,11 @@
             });
         }
 
-        // 禁言名单相关
+        // ===== 禁言名单相关 =====
+        // mutedCountdownTimer：每秒刷新剩余秒数的定时器，列表为空时清除
         let mutedCountdownTimer = null;
 
+        // 加载禁言名单 + 绑定"解禁"按钮 + 启动倒计时刷新
         function loadMutedUsers() {
             fetch(roomBase + '/api/admin/muted_users?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
                 const container = document.getElementById('muted-list-container');
@@ -1715,6 +1871,10 @@
             });
         }
 
+        /* ============================================================
+           房间设置：名称 / 密码 / 开关
+           ============================================================ */
+        // 保存房间名称（SSE room_name 事件会同步所有客户端标题）
         function saveRoomName() {
             const name = document.getElementById('room-name-input').value.trim();
             fetch(roomBase + '/api/admin/set_room_name', {
@@ -1724,6 +1884,7 @@
             });
         }
 
+        // 设置房间密码（非空）
         function setPassword() {
             const pw = document.getElementById('password-input-admin').value.trim();
             fetch(roomBase + '/api/admin/set_password', {
@@ -1733,6 +1894,7 @@
             }).then(res => res.json()).then(d => alert(d.success ? '密码已设置' : (d.error || '设置失败')));
         }
 
+        // 清除房间密码（password 传空串）
         function clearPassword() {
             fetch(roomBase + '/api/admin/set_password', {
                 method: 'POST',
@@ -1741,6 +1903,7 @@
             }).then(res => res.json()).then(d => alert(d.success ? '密码已清除' : (d.error || '清除失败')));
         }
 
+        // 开/关房间：先读当前状态取反再提交；关闭成功后断开 SSE 并跳 /admin
         function toggleRoomOpen() {
             fetch(roomBase + '/api/room_status').then(res => res.json()).then(data => {
                 const newOpen = !data.open;
@@ -1755,6 +1918,9 @@
             });
         }
 
+        /* ============================================================
+           本地消息缓存（localStorage，最多 500 条，仅同源）
+           ============================================================ */
         function saveMessageToLocal(msg) {
             const key = 'chat_history_' + location.origin;
             let history = JSON.parse(localStorage.getItem(key) || '[]');
@@ -1763,6 +1929,12 @@
             localStorage.setItem(key, JSON.stringify(history));
         }
 
+        /* ============================================================
+           Tab 切换（更多面板 / 管理面板）
+           通过 id 命名约定定位按钮与内容：
+             按钮 #tab-{name} / #admin-tab-{name}
+             内容 #more-tab-{name} / #admin-tab-content-{name}
+           ============================================================ */
         // ===== 更多面板：Tab 切换 =====
         function switchMoreTab(tab) {
             document.querySelectorAll('.more-tab').forEach(btn => {
@@ -1791,7 +1963,11 @@
             if (activeContent) activeContent.style.display = 'block';
         }
 
-        // ===== 收藏夹加载/渲染 =====
+        /* ============================================================
+           收藏夹：加载 → 按类型（图片/文件/文本）分组渲染 →
+           绑定删除按钮与文件下载（下载前先查 file_exists）
+           resultId：容器 id（普通用户 fav-results / 管理员 admin-fav-results）
+           ============================================================ */
         function loadFavorites(resultId) {
             const container = document.getElementById(resultId);
             container.innerHTML = '<p style="color:#999;">加载中...</p>';
@@ -1868,6 +2044,7 @@
         }
 
         // ===== 聊天记录搜索 =====
+        // GET /api/query_messages?nickname= → 按发送者分组渲染滚动列表
         function searchChatHistory(nickInputId, resultId) {
             const nick = document.getElementById(nickInputId).value.trim();
             const container = document.getElementById(resultId);
@@ -1900,6 +2077,7 @@
         }
 
         // ===== 聊天文件搜索 =====
+        // GET /api/query_files?nickname= → 图片内联缩略图 / 文件下载链接；已删除标注 [已删除]
         function searchChatFiles(nickInputId, resultId) {
             const nick = document.getElementById(nickInputId).value.trim();
             const container = document.getElementById(resultId);
@@ -1950,6 +2128,9 @@
                 .catch(() => { container.innerHTML = '<p style="color:#f56c6c;">加载失败</p>'; });
         }
 
+        /* ============================================================
+           面板交互：点击外部关闭下拉 + 拖拽移动 + 右下角缩放
+           ============================================================ */
         // ===== 面板拖拽 + 缩放 =====
         // 点击菜单外区域自动关闭下拉菜单
         document.addEventListener('click', (e) => {
@@ -1961,19 +2142,19 @@
                 moreDD.classList.remove('open');
         });
 
-        // ===== 可拖拽弹窗 =====
+        // 拖拽移动：按住 header 拖动窗口（记录起始鼠标与窗口位置差量）
         function makeDraggable(winEl, headerId) {
             const header = document.getElementById(headerId);
             let isDragging = false, startX, startY, origLeft, origTop;
             header.addEventListener('mousedown', (e) => {
-                if (e.target.closest('.close-btn')) return;
+                if (e.target.closest('.close-btn')) return;   // 点关闭按钮不触发拖拽
                 isDragging = true;
                 startX = e.clientX; startY = e.clientY;
                 const rect = winEl.getBoundingClientRect();
                 origLeft = rect.left; origTop = rect.top;
                 winEl.style.left = origLeft + 'px';
                 winEl.style.top = origTop + 'px';
-                winEl.style.right = 'auto';
+                winEl.style.right = 'auto';   // 从居中定位切到绝对定位
                 e.preventDefault();
             });
             document.addEventListener('mousemove', (e) => {
@@ -1984,6 +2165,7 @@
             document.addEventListener('mouseup', () => { isDragging = false; });
         }
 
+        // 缩放：拖右下角 handle，限制在 340×200 ~ 95%视口 范围内
         function makeResizable(winEl, handleId) {
             const handle = document.getElementById(handleId);
             let isResizing = false, startX, startY, origW, origH;
@@ -2004,11 +2186,13 @@
             document.addEventListener('mouseup', () => { isResizing = false; });
         }
 
+        // 给存在的面板绑定拖拽/缩放（管理/更多按角色二选一渲染）
         const adminWin = document.getElementById('admin-window');
         if (adminWin) { makeDraggable(adminWin, 'admin-dock-header'); makeResizable(adminWin, 'admin-resize'); }
         const moreWin = document.getElementById('more-window');
         if (moreWin) { makeDraggable(moreWin, 'more-dock-header'); makeResizable(moreWin, 'more-resize'); }
 
+        // HTML 转义：textContent 取义 + 补引号转义，结果可安全用于标签内容与属性
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -2016,6 +2200,7 @@
             return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // 页面关闭时通知服务器离线（sendBeacon 用 Blob 指定 JSON content-type）
         window.addEventListener('beforeunload', () => {
             // sendBeacon 直接传字符串会以 text/plain 发送，被后端拒绝；用 Blob 指定 JSON 类型
             if (userId) navigator.sendBeacon(roomBase + '/api/leave',

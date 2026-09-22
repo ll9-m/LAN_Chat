@@ -1,36 +1,57 @@
 <!DOCTYPE html>
+<!--
+  login.html — 入口登录页
+  功能：
+    1. 角色切换 Tab（普通登录 / 管理员登录）
+    2. 管理员需输入密码，POST /login 校验；普通用户直接进
+    3. 登录成功跳转 /rooms（由后端按 session 角色分流模板）
+    4. 底部展示入口二维码（/api/entry-qr），手机扫码直达本页
+-->
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>进入 - 在线匿名聊天室</title>
     <style>
+        /* ===== 基础重置与页面布局 ===== */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
                background: #f0f2f5; min-height: 100vh;
                display: flex; align-items: center; justify-content: center; }
+
+        /* ===== 登录卡片 ===== */
         .login-box { background: white; border-radius: 16px; padding: 40px 36px; width: 380px; max-width: 92%;
                      box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
         .login-box h1 { font-size: 1.3rem; color: #333; text-align: center; margin-bottom: 8px; }
         .login-box .sub { text-align: center; color: #999; font-size: 0.85rem; margin-bottom: 28px; }
+
+        /* ===== 角色切换 Tab（普通 / 管理员） ===== */
         .role-tabs { display: flex; gap: 0; margin-bottom: 24px; background: #f0f2f5; border-radius: 10px; padding: 4px; }
         .role-tab { flex: 1; text-align: center; padding: 10px 0; border-radius: 8px; cursor: pointer;
                     font-size: 0.95rem; color: #666; transition: all .2s; border: none; background: none; font-weight: 500; }
         .role-tab.active { background: #12b7f5; color: white; box-shadow: 0 2px 8px rgba(18,183,245,0.4); }
+
+        /* ===== 表单字段 ===== */
         .field { margin-bottom: 18px; }
         .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 6px; }
         .field input { width: 100%; padding: 11px 14px; border: 1px solid #dcdfe6; border-radius: 8px;
                        font-size: 0.95rem; outline: none; transition: border-color .2s; }
         .field input:focus { border-color: #12b7f5; }
+
+        /* ===== 进入按钮 / 提示 ===== */
         .enter-btn { width: 100%; padding: 13px 0; background: #12b7f5; color: white; border: none;
                      border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity .15s; }
         .enter-btn:hover { opacity: 0.88; }
         .hint { text-align: center; color: #bbb; font-size: 0.78rem; margin-top: 16px; }
+        .err { color: #f56c6c; font-size: 0.85rem; text-align: center; margin-bottom: 12px; display: none; }
+
+        /* ===== 底部入口二维码 ===== */
         .qr-section { text-align: center; margin-top: 24px; padding-top: 20px; border-top: 1px solid #f0f0f0; }
         .qr-section .qr-label { font-size: 0.82rem; color: #999; margin-bottom: 10px; }
         .qr-section img { width: 140px; height: 140px; border: 1px solid #eee; border-radius: 8px; }
+
+        /* 管理员密码框：默认隐藏，切到管理员 Tab 时显示 */
         #admin-pw-field { display: none; }
-        .err { color: #f56c6c; font-size: 0.85rem; text-align: center; margin-bottom: 12px; display: none; }
     </style>
 </head>
 <body>
@@ -38,13 +59,16 @@
         <h1>在线匿名聊天室</h1>
         <div class="sub">请选择身份进入</div>
 
+        <!-- 角色切换 Tab -->
         <div class="role-tabs">
             <button class="role-tab active" id="tab-user" type="button">普通登录</button>
             <button class="role-tab" id="tab-admin" type="button">管理员登录</button>
         </div>
 
+        <!-- 登录错误提示（密码错误等） -->
         <div class="err" id="err-msg"></div>
 
+        <!-- 管理员密码输入（仅管理员 Tab 可见） -->
         <div class="field" id="admin-pw-field">
             <label>管理员密码</label>
             <input type="password" id="admin-pw" placeholder="请输入管理员密码" autocomplete="current-password">
@@ -53,6 +77,7 @@
         <button class="enter-btn" id="enter-btn">进入</button>
         <div class="hint">普通登录可浏览并进入聊天房间</div>
 
+        <!-- 入口二维码：手机扫码直达本页 -->
         <div class="qr-section">
             <div class="qr-label">手机扫码直接进入</div>
             <img src="/api/entry-qr" alt="入口二维码">
@@ -60,13 +85,18 @@
     </div>
 
     <script>
-        let role = 'user';
+        // ===== 状态 =====
+        let role = 'user';   // 当前选中的登录角色
+
+        // ===== DOM 引用 =====
         const tabUser = document.getElementById('tab-user');
         const tabAdmin = document.getElementById('tab-admin');
         const pwField = document.getElementById('admin-pw-field');
         const pwInput = document.getElementById('admin-pw');
         const errBox = document.getElementById('err-msg');
 
+        // ===== 角色 Tab 切换 =====
+        // 切到管理员时显示密码框并聚焦；切回普通时隐藏并清错误
         function setRole(r) {
             role = r;
             tabUser.classList.toggle('active', r === 'user');
@@ -78,6 +108,8 @@
         tabUser.addEventListener('click', () => setRole('user'));
         tabAdmin.addEventListener('click', () => setRole('admin'));
 
+        // ===== 登录提交 =====
+        // 按钮点击或密码框回车均触发；POST /login，成功按 redirect 跳转
         document.getElementById('enter-btn').addEventListener('click', doLogin);
         pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
