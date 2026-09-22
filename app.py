@@ -749,11 +749,11 @@ def api_create_room():
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '新房间').strip()
     pw = data.get('password')
-    room_id = f'room_{int(time.time())}'
+    room_id = f'room_{int(time.time() * 1000)}_{os.urandom(3).hex()}'
     db_manager.create_room(room_id, name, pw)
     room_manager.get_or_create(room_id)
     ip = get_local_ip()
-    generate_qr(f'http://{ip}:5000/room/{room_id}/', os.path.join(QR_DIR, f'{room_id}.png'))
+    generate_qr(f'http://{ip}:{BASE_PORT}/room/{room_id}/', os.path.join(QR_DIR, f'{room_id}.png'))
     return jsonify({'success': True, 'room_id': room_id})
 
 @app.route('/api/rooms/delete', methods=['POST'])
