@@ -235,7 +235,8 @@ class DatabaseManager:
         db_path = room_db_path(room_id)
         if os.path.exists(db_path):
             os.remove(db_path)
-        up = room_uploads_dir(room_id)
+        # 直接拼路径，不走 room_uploads_dir（后者会误创建目录）
+        up = os.path.join(BASE_DIR, f'uploads_{room_id}')
         if os.path.isdir(up):
             shutil.rmtree(up, ignore_errors=True)
 
@@ -617,7 +618,9 @@ class ChatRoom:
         self.room_open = bool(info.get('is_open', 1))
         self.file_limit_mb = info.get('file_limit_mb', 0) or 0
         self.max_history = info.get('max_history', 200) or 200
-        self.recall_time_limit = info.get('recall_time_limit', 300) or 300
+        # 注意：0 是合法值（=禁止撤回），不能用 or 兜底，否则重启后 0 会变回 300
+        rt = info.get('recall_time_limit')
+        self.recall_time_limit = 300 if rt is None else int(rt)
         self.db.max_history = self.max_history   # 同步给 DB 层做消息裁剪
 
     def _save_state(self):
@@ -666,14 +669,20 @@ class ChatRoom:
             return {'error': '密码错误'}, 403
         if self.db.is_blacklisted(device_id) and not is_admin_user:
             return {'error': '您已被加入黑名单'}, 403
-        # 昵称唯一：同房间在线不允许重名（管理员自己改名除外）
-        with self.lock:
-            for uid, u in self.online_users.items():
-                if u['nickname'] == nickname and uid != (f'admin_{device_id}' if is_admin_user else None):
-                    return {'error': '昵称已被占用'}, 400
         # 管理员档案独立命名空间
         admin_device_id = f'admin_{device_id}' if is_admin_user else device_id
         target_device_id = admin_device_id if is_admin_user else device_id
+        # 同设备重复加入（刷新页面且 leave 未送达）：先清掉残留会话，
+        # 否则旧会话占着昵称，新会话会报"昵称已被占用"
+        with self.lock:
+            for uid in [uid for uid, u in self.online_users.items()
+                        if u.get('device_id') == target_device_id]:
+                self.online_users.pop(uid, None)
+        # 昵称唯一：同房间在线不允许重名（上面已清掉自己的残留会话）
+        with self.lock:
+            for uid, u in self.online_users.items():
+                if u['nickname'] == nickname:
+                    return {'error': '昵称已被占用'}, 400
         # 档案：首次随机分配头像/颜色，之后复用；昵称变了就更新
         existing = self.db.get_profile(target_device_id)
         if not existing:
@@ -693,7 +702,8 @@ class ChatRoom:
         profile = self.db.get_profile(target_device_id)
         muted_remaining = max(0, int(profile['muted_until'] - time.time())) if profile else 0
         return {'success': True, 'user_id': user_id, 'nickname': nickname,
-                'avatar': avatar, 'color': color, 'muted_remaining': muted_remaining}, 200
+                'avatar': avatar, 'color': color, 'muted_remaining': muted_remaining,
+                'file_limit_mb': self.file_limit_mb}, 200
 
     def leave(self, user_id):
         """离开房间：从在线表移除并广播最新用户列表。"""
@@ -770,19 +780,21 @@ class ChatRoom:
         return {'success': True, 'open': self.room_open}, 200
 
     def set_password(self, admin_id, password):
-        """设置/清除房间密码（空串 → None 表示无密码）。"""
+        """设置/清除房间密码（空串 → None 表示无密码），广播 password_changed 让在线用户重进。"""
         if not self.is_admin(admin_id):
             return {'error': '无权限'}, 403
         self.room_password = password or None
         self._save_state()
+        self.broadcaster.broadcast({'type': 'password_changed'})
         return {'success': True}, 200
 
     def set_file_limit(self, admin_id, limit_mb):
-        """设置单文件大小上限 MB（0 = 不限制）。"""
+        """设置单文件大小上限 MB（0 = 不限制），广播 file_limit 让所有客户端实时同步。"""
         if not self.is_admin(admin_id):
             return {'error': '无权限'}, 403
         self.file_limit_mb = max(0, int(limit_mb or 0))
         self._save_state()
+        self.broadcaster.broadcast({'type': 'file_limit', 'limit_mb': self.file_limit_mb})
         return {'success': True, 'file_limit_mb': self.file_limit_mb}, 200
 
     def set_max_history(self, admin_id, max_history):
@@ -819,7 +831,7 @@ class ChatRoom:
         self.room_open = True
         self.file_limit_mb = 0
         self.max_history = 200
-        self.recall_time_limit = 0
+        self.recall_time_limit = 300
         self._save_state()
         self.broadcaster.broadcast({'type': 'factory_reset'})
         return {'success': True}, 200
@@ -1162,6 +1174,8 @@ def api_delete_room():
     # 先关闭房间实例的 DB 连接，再删除文件（Windows 下文件锁）
     inst = room_manager.get_room_instance(room_id)
     if inst:
+        # 先通知在线客户端房间已删，避免他们继续对着已销毁的实例操作
+        inst.broadcaster.broadcast({'type': 'room_closed'})
         with room_manager._lock:
             room_manager._rooms.pop(room_id, None)
         try:
@@ -1614,13 +1628,19 @@ def api_admin_set_recall_time_limit():
 
 @room_bp.route('/api/admin/message_stats')
 def api_admin_message_stats():
-    """消息统计（总数 + 视图按用户/类型聚合）。"""
+    """消息统计（总数 + 视图按用户/类型聚合），需房间内在线管理员身份。"""
+    user_id = request.args.get('user_id')
+    if not g.room.is_admin(user_id):
+        return jsonify({'error': '无权限'}), 403
     return jsonify(g.room.db.sp_get_message_stats())
 
 
 @room_bp.route('/api/admin/audit_log')
 def api_admin_audit_log():
-    """消息删除审计日志。"""
+    """消息删除审计日志，需房间内在线管理员身份。"""
+    user_id = request.args.get('user_id')
+    if not g.room.is_admin(user_id):
+        return jsonify({'error': '无权限'}), 403
     limit = request.args.get('limit', 50, type=int)
     return jsonify({'logs': g.room.db.sp_get_audit_log(limit)})
 

@@ -136,17 +136,24 @@
         const qrModalImg = document.getElementById('qr-modal-img');
         const IP = '{{ ip }}';   // 后端注入的局域网 IP（备用）
 
-        // HTML 转义：防止房间名等用户输入破坏 DOM / 注入
-        function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+        // HTML 转义：防止房间名等用户输入破坏 DOM / 注入（含引号，可安全用于属性）
+        function escHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s || '';
+            return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
 
         // ===== 房间列表加载 =====
         // GET /api/rooms/status → 渲染卡片（二维码 + 名称 + ID + 状态 + 操作按钮）
+        // 房间名只存 JS Map，不拼进 onclick，避免引号导致的 JS 注入
+        const roomNames = {};
         function loadRooms() {
             fetch('/api/rooms/status').then(r => r.json()).then(data => {
                 const rooms = data.rooms || [];
                 if (!rooms.length) { grid.innerHTML = ''; emptyMsg.style.display = 'block'; return; }
                 emptyMsg.style.display = 'none';
                 grid.innerHTML = rooms.map(r => {
+                    roomNames[r.room_id] = r.room_name;
                     const dotClass = r.is_open ? 'dot-green' : 'dot-red';
                     const statusText = r.is_open ? '开放中' : '已关闭';
                     return `<div class="room-card">
@@ -158,7 +165,7 @@
                             <a href="/room/${r.room_id}/?admin=1" class="btn btn-primary btn-sm">进入管理</a>
                             <a href="/room/${r.room_id}/" class="btn btn-success btn-sm" target="_blank">进入聊天</a>
                             <button class="btn btn-warning btn-sm" onclick="toggleRoom('${r.room_id}')">${r.is_open ? '关闭' : '开启'}</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteRoom('${r.room_id}','${escHtml(r.room_name)}')">删除</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteRoom('${r.room_id}')">删除</button>
                         </div>
                     </div>`;
                 }).join('');
@@ -179,8 +186,9 @@
                 .then(r => r.json()).then(() => loadRooms());
         }
 
-        // ===== 删除房间（confirm 确认后调用） =====
-        function deleteRoom(roomId, name) {
+        // ===== 删除房间（confirm 确认后调用，房间名从 roomNames 取） =====
+        function deleteRoom(roomId) {
+            const name = roomNames[roomId] || roomId;
             if (!confirm(`确定删除房间"${name}"？\n所有聊天记录和文件将被清除！`)) return;
             fetch('/api/rooms/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: roomId}) })
                 .then(r => r.json()).then(() => loadRooms());

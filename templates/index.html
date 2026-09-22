@@ -961,9 +961,7 @@
             <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
             <button id="file-btn" title="发送文件/图片">📎</button>
             <button id="send-btn">发送</button>
-            <input type="file" id="any-file-input"
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.mp3,.mp4,.wav,.flac,.py,.js,.html,.css,.json,.xml,.csv"
-                style="display:none;">
+            <input type="file" id="any-file-input" style="display:none;">
         </div>
     </div>
 
@@ -1151,9 +1149,12 @@
                     eventSource.close();
                     location.reload();
                 } else if (data.type === 'password_changed') {
-                    alert('密码已修改，请重新加入');
-                    eventSource.close();
-                    location.reload();
+                    // 管理员自己改的密码不用重进；普通用户需重新加入
+                    if (!isAdmin) {
+                        alert('密码已修改，请重新加入');
+                        eventSource.close();
+                        location.reload();
+                    }
                 } else if (data.type === 'history_cleared') {
                     // 聊天记录被管理员清空
                     messagesDiv.innerHTML = '';
@@ -1665,7 +1666,8 @@
            ============================================================ */
         // 加载消息统计（总数 + v_message_stats 用户表 + v_message_type_stats 类型表）
         function loadStats() {
-            fetch(roomBase + '/api/admin/message_stats').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/admin/message_stats?user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
+                if (data.error) { document.getElementById('stats-container').innerHTML = `<p style="color:#f56c6c;">${escapeHtml(data.error)}</p>`; return; }
                 const container = document.getElementById('stats-container');
                 let html = `<p><b>总消息数：</b>${data.total_messages}</p>`;
 
@@ -1703,8 +1705,9 @@
 
         // 加载消息删除审计日志（最近 20 条）
         function loadAuditLog() {
-            fetch(roomBase + '/api/admin/audit_log?limit=20').then(res => res.json()).then(data => {
+            fetch(roomBase + '/api/admin/audit_log?limit=20&user_id=' + encodeURIComponent(userId)).then(res => res.json()).then(data => {
                 const container = document.getElementById('audit-container');
+                if (data.error) { container.innerHTML = `<p style="color:#f56c6c;">${escapeHtml(data.error)}</p>`; return; }
                 if (!data.logs || data.logs.length === 0) {
                     container.innerHTML = '<p style="color:#999;">暂无审计记录</p>';
                     return;
