@@ -148,60 +148,95 @@ class DatabaseManager:
 
 # ==================== 数据库：房间库 ====================
 class Database:
-    def __init__(self, path):
+    def __init__(self, path, room_id):
+        self.room_id = room_id
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self.max_history = MAX_HISTORY
         self._init_schema()
+        self._migrate()
 
     def _init_schema(self):
         with self._lock, self._conn:
             self._conn.executescript("""
-                CREATE TABLE IF NOT EXISTS room_state (
-                    key   TEXT PRIMARY KEY, value TEXT
-                );
                 CREATE TABLE IF NOT EXISTS profiles (
-                    device_id TEXT PRIMARY KEY, nickname TEXT NOT NULL,
-                    avatar TEXT, color TEXT, muted_until REAL NOT NULL DEFAULT 0
+                    room_id TEXT NOT NULL, 
+                    device_id TEXT NOT NULL, 
+                    nickname TEXT NOT NULL,
+                    avatar TEXT, color TEXT, 
+                    muted_until REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (room_id, device_id)
                 );
                 CREATE TABLE IF NOT EXISTS messages (
-                    id TEXT PRIMARY KEY, type TEXT, content TEXT, sender TEXT,
-                    user_id TEXT, is_admin INTEGER NOT NULL DEFAULT 0,
-                    avatar TEXT, color TEXT, timestamp REAL,
-                    file_name TEXT, file_size INTEGER
+                    room_id TEXT NOT NULL, 
+                    id TEXT NOT NULL, 
+                    type TEXT, 
+                    content TEXT, 
+                    sender TEXT,
+                    user_id TEXT, 
+                    is_admin INTEGER NOT NULL DEFAULT 0,
+                    avatar TEXT, 
+                    color TEXT, 
+                    timestamp REAL,
+                    file_name TEXT, 
+                    file_size INTEGER,
+                    PRIMARY KEY (room_id, id)
                 );
                 CREATE TABLE IF NOT EXISTS blacklist (
-                    device_id TEXT PRIMARY KEY, nickname TEXT,
-                    ip TEXT, created_at REAL
+                    room_id TEXT NOT NULL, 
+                    device_id TEXT NOT NULL, 
+                    nickname TEXT,
+                    ip TEXT, 
+                    created_at REAL,
+                    PRIMARY KEY (room_id, device_id)
                 );
                 CREATE TABLE IF NOT EXISTS favorites (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
-                    msg_id TEXT, msg_type TEXT, content TEXT, sender TEXT,
-                    file_name TEXT, file_size INTEGER, created_at REAL NOT NULL
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                    room_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL, 
+                    msg_id TEXT, 
+                    msg_type TEXT, 
+                    content TEXT,
+                    sender TEXT, 
+                    file_name TEXT, 
+                    file_size INTEGER, 
+                    created_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS message_audit (
+                    audit_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                    room_id TEXT NOT NULL,
+                    message_id TEXT, 
+                    type TEXT, 
+                    content TEXT, 
+                    sender TEXT,
+                    user_id TEXT, 
+                    deleted_at REAL, 
+                    action TEXT
                 );
             """)
-            cols = {r[1] for r in self._conn.execute('PRAGMA table_info(messages)')}
-            if 'file_name' not in cols: self._conn.execute('ALTER TABLE messages ADD COLUMN file_name TEXT')
-            if 'file_size' not in cols: self._conn.execute('ALTER TABLE messages ADD COLUMN file_size INTEGER')
             self._conn.executescript("""
-                CREATE TABLE IF NOT EXISTS message_audit (
-                    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    message_id TEXT, type TEXT, content TEXT, sender TEXT,
-                    user_id TEXT, deleted_at REAL, action TEXT
-                );
                 CREATE TRIGGER IF NOT EXISTS trg_message_delete_audit
                 AFTER DELETE ON messages BEGIN
-                    INSERT INTO message_audit(message_id, type, content, sender, user_id, deleted_at, action)
-                    VALUES (OLD.id, OLD.type, OLD.content, OLD.sender, OLD.user_id, strftime('%s','now'), 'DELETE');
+                    INSERT INTO message_audit(room_id, message_id, type, content, sender, user_id, deleted_at, action)
+                    VALUES (OLD.room_id, OLD.id, OLD.type, OLD.content, OLD.sender, OLD.user_id, strftime('%s','now'), 'DELETE');
                 END;
                 CREATE VIEW IF NOT EXISTS v_message_stats AS
-                SELECT user_id, sender, COUNT(*) as message_count,
+                SELECT room_id, user_id, sender, COUNT(*) as message_count,
                        MAX(timestamp) as last_active, MIN(timestamp) as first_active
-                FROM messages WHERE user_id IS NOT NULL GROUP BY user_id, sender;
+                FROM messages WHERE user_id IS NOT NULL GROUP BY room_id, user_id, sender;
                 CREATE VIEW IF NOT EXISTS v_message_type_stats AS
-                SELECT type, COUNT(*) as count FROM messages GROUP BY type;
+                SELECT room_id, type, COUNT(*) as count FROM messages GROUP BY room_id, type;
             """)
+
+    def _migrate(self):
+        with self._lock, self._conn:
+            for table in ('profiles', 'messages', 'blacklist', 'favorites', 'message_audit'):
+                cols = {r[1] for r in self._conn.execute(f'PRAGMA table_info({table})')}
+                if 'room_id' not in cols:
+                    self._conn.execute(f'ALTER TABLE {table} ADD COLUMN room_id TEXT NOT NULL DEFAULT \'\'')
+                    self._conn.execute(f'UPDATE {table} SET room_id=? WHERE room_id=\'\'', (self.room_id,))
+            self._conn.execute('DROP TABLE IF EXISTS room_state')
 
     def close(self):
         with self._lock:
@@ -214,48 +249,34 @@ class Database:
     def _execute(self, sql, params=()):
         with self._lock, self._conn: self._conn.execute(sql, params)
 
-    # 房间设置
-    def get_room_state(self):
-        rows = self._query('SELECT key, value FROM room_state')
-        s = {r['key']: r['value'] for r in rows}
-        return {'room_name': s.get('room_name') or '在线匿名聊天室', 'password': s.get('password'),
-                'open': s.get('open', '1') == '1', 'file_limit_mb': int(s.get('file_limit_mb') or 0),
-                'max_history': int(s.get('max_history') or 200),
-                'recall_time_limit': int(s.get('recall_time_limit') or 300)}
-
-    def save_room_state(self, room_name, password, is_open, file_limit_mb=0, max_history=200, recall_time_limit=300):
-        pairs = [('room_name', room_name), ('password', password), ('open', '1' if is_open else '0'),
-                 ('file_limit_mb', str(int(file_limit_mb))), ('max_history', str(int(max_history))),
-                 ('recall_time_limit', str(int(recall_time_limit)))]
-        with self._lock, self._conn:
-            self._conn.executemany('REPLACE INTO room_state(key, value) VALUES (?, ?)', pairs)
-
     # 档案
     def get_profile(self, device_id):
-        rows = self._query('SELECT * FROM profiles WHERE device_id = ?', (device_id,))
+        rows = self._query('SELECT * FROM profiles WHERE room_id=? AND device_id=?', (self.room_id, device_id))
         return dict(rows[0]) if rows else None
 
     def save_profile(self, device_id, nickname, avatar, color):
-        self._execute('INSERT INTO profiles(device_id,nickname,avatar,color,muted_until) VALUES(?,?,?,?,0) '
-                      'ON CONFLICT(device_id) DO UPDATE SET nickname=excluded.nickname,avatar=excluded.avatar,color=excluded.color',
-                      (device_id, nickname, avatar, color))
+        self._execute('INSERT OR REPLACE INTO profiles(room_id,device_id,nickname,avatar,color,muted_until) VALUES(?,?,?,?,?,0)',
+                      (self.room_id, device_id, nickname, avatar, color))
 
     def update_profile_nickname(self, device_id, nickname):
-        self._execute('UPDATE profiles SET nickname=? WHERE device_id=?', (nickname, device_id))
+        self._execute('UPDATE profiles SET nickname=? WHERE room_id=? AND device_id=?', (nickname, self.room_id, device_id))
 
     def set_muted_until(self, device_id, muted_until):
-        self._execute('UPDATE profiles SET muted_until=? WHERE device_id=?', (muted_until, device_id))
+        self._execute('UPDATE profiles SET muted_until=? WHERE room_id=? AND device_id=?', (muted_until, self.room_id, device_id))
 
     def get_muted_users(self):
         return [dict(r) for r in self._query(
-            'SELECT device_id,nickname,avatar,color,muted_until FROM profiles WHERE muted_until>?', (time.time(),))]
+            'SELECT device_id,nickname,avatar,color,muted_until FROM profiles WHERE room_id=? AND muted_until>?',
+            (self.room_id, time.time()))]
 
-    # 查询
+    # 消息
     def query_messages(self, nickname=None):
         if nickname:
-            rows = self._query('SELECT * FROM messages WHERE sender LIKE ? AND type=? ORDER BY timestamp ASC', (f'%{nickname}%', 'text'))
+            rows = self._query('SELECT * FROM messages WHERE room_id=? AND sender LIKE ? AND type=? ORDER BY timestamp ASC',
+                               (self.room_id, f'%{nickname}%', 'text'))
         else:
-            rows = self._query('SELECT * FROM messages WHERE type=? ORDER BY timestamp ASC', ('text',))
+            rows = self._query('SELECT * FROM messages WHERE room_id=? AND type=? ORDER BY timestamp ASC',
+                               (self.room_id, 'text'))
         groups = {}
         for r in rows:
             msg = self._row_to_message(r)
@@ -264,9 +285,11 @@ class Database:
 
     def query_files(self, nickname=None, upload_dir=None):
         if nickname:
-            rows = self._query('SELECT * FROM messages WHERE sender LIKE ? AND type IN (?,?) ORDER BY timestamp ASC', (f'%{nickname}%', 'image', 'file'))
+            rows = self._query('SELECT * FROM messages WHERE room_id=? AND sender LIKE ? AND type IN (?,?) ORDER BY timestamp ASC',
+                               (self.room_id, f'%{nickname}%', 'image', 'file'))
         else:
-            rows = self._query('SELECT * FROM messages WHERE type IN (?,?) ORDER BY timestamp ASC', ('image', 'file'))
+            rows = self._query('SELECT * FROM messages WHERE room_id=? AND type IN (?,?) ORDER BY timestamp ASC',
+                               (self.room_id, 'image', 'file'))
         groups = {}
         for r in rows:
             msg = self._row_to_message(r)
@@ -281,80 +304,94 @@ class Database:
                 'color': r['color'], 'timestamp': r['timestamp'], 'file_name': r['file_name'], 'file_size': r['file_size']}
 
     def get_recent_messages(self, limit=None):
-        rows = self._query('SELECT * FROM messages ORDER BY rowid DESC LIMIT ?', (limit or self.max_history,))
+        rows = self._query('SELECT * FROM messages WHERE room_id=? ORDER BY rowid DESC LIMIT ?',
+                           (self.room_id, limit or self.max_history))
         return [self._row_to_message(r) for r in reversed(rows)]
 
     def add_message(self, msg):
         with self._lock, self._conn:
-            self._conn.execute('INSERT OR REPLACE INTO messages(id,type,content,sender,user_id,is_admin,avatar,color,timestamp,file_name,file_size) '
-                               'VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-                               (msg['id'], msg.get('type'), msg.get('content'), msg.get('sender'),
+            self._conn.execute('INSERT OR REPLACE INTO messages(room_id,id,type,content,sender,user_id,is_admin,avatar,color,timestamp,file_name,file_size) '
+                               'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                               (self.room_id, msg['id'], msg.get('type'), msg.get('content'), msg.get('sender'),
                                 msg.get('user_id'), int(msg.get('is_admin', False)), msg.get('avatar'),
                                 msg.get('color'), msg.get('timestamp'), msg.get('file_name'), msg.get('file_size')))
 
     # 黑名单
     def is_blacklisted(self, device_id):
-        return bool(self._query('SELECT 1 FROM blacklist WHERE device_id=?', (device_id,)))
+        return bool(self._query('SELECT 1 FROM blacklist WHERE room_id=? AND device_id=?', (self.room_id, device_id)))
 
     def add_blacklist(self, device_id, nickname, ip):
-        self._execute('INSERT OR REPLACE INTO blacklist(device_id,nickname,ip,created_at) VALUES(?,?,?,?)',
-                      (device_id, nickname, ip, time.time()))
+        self._execute('INSERT OR REPLACE INTO blacklist(room_id,device_id,nickname,ip,created_at) VALUES(?,?,?,?,?)',
+                      (self.room_id, device_id, nickname, ip, time.time()))
 
     def remove_blacklist(self, device_id):
         with self._lock, self._conn:
-            return self._conn.execute('DELETE FROM blacklist WHERE device_id=?', (device_id,)).rowcount > 0
+            return self._conn.execute('DELETE FROM blacklist WHERE room_id=? AND device_id=?',
+                                      (self.room_id, device_id)).rowcount > 0
 
     def get_blacklist(self):
-        return [dict(r) for r in self._query('SELECT device_id,nickname,ip,created_at FROM blacklist ORDER BY created_at DESC')]
+        return [dict(r) for r in self._query(
+            'SELECT device_id,nickname,ip,created_at FROM blacklist WHERE room_id=? ORDER BY created_at DESC',
+            (self.room_id,))]
 
     # 收藏夹
     def add_favorite(self, user_id, msg):
         with self._lock, self._conn:
-            self._conn.execute('INSERT INTO favorites(user_id,msg_id,msg_type,content,sender,file_name,file_size,created_at) VALUES(?,?,?,?,?,?,?,?)',
-                               (user_id, msg.get('id'), msg.get('type'), msg.get('content'), msg.get('sender'), msg.get('file_name'), msg.get('file_size'), time.time()))
+            self._conn.execute('INSERT INTO favorites(room_id,user_id,msg_id,msg_type,content,sender,file_name,file_size,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+                               (self.room_id, user_id, msg.get('id'), msg.get('type'), msg.get('content'),
+                                msg.get('sender'), msg.get('file_name'), msg.get('file_size'), time.time()))
 
     def get_favorites(self, user_id):
-        return [dict(r) for r in self._query('SELECT id,msg_id,msg_type,content,sender,file_name,file_size,created_at FROM favorites WHERE user_id=? ORDER BY created_at DESC', (user_id,))]
+        return [dict(r) for r in self._query(
+            'SELECT id,msg_id,msg_type,content,sender,file_name,file_size,created_at FROM favorites WHERE room_id=? AND user_id=? ORDER BY created_at DESC',
+            (self.room_id, user_id))]
 
     def remove_favorite(self, user_id, fav_id):
         with self._lock, self._conn:
-            return self._conn.execute('DELETE FROM favorites WHERE id=? AND user_id=?', (fav_id, user_id)).rowcount > 0
+            return self._conn.execute('DELETE FROM favorites WHERE id=? AND user_id=? AND room_id=?',
+                                      (fav_id, user_id, self.room_id)).rowcount > 0
 
     # 清理
     def cleanup_old_messages(self, max_history):
         with self._lock, self._conn:
-            self._conn.execute('DELETE FROM messages WHERE rowid NOT IN (SELECT rowid FROM messages ORDER BY rowid DESC LIMIT ?)', (max_history,))
+            self._conn.execute('DELETE FROM messages WHERE room_id=? AND rowid NOT IN '
+                               '(SELECT rowid FROM messages WHERE room_id=? ORDER BY rowid DESC LIMIT ?)',
+                               (self.room_id, self.room_id, max_history))
 
     def clear_all_messages(self):
-        with self._lock, self._conn: self._conn.execute('DELETE FROM messages')
+        with self._lock, self._conn:
+            self._conn.execute('DELETE FROM messages WHERE room_id=?', (self.room_id,))
 
     def factory_reset(self):
         with self._lock, self._conn:
-            self._conn.execute('DELETE FROM messages')
-            self._conn.execute('DELETE FROM profiles')
-            self._conn.execute('DELETE FROM blacklist')
-            self._conn.execute('DELETE FROM favorites')
-            self._conn.execute("REPLACE INTO room_state(key,value) VALUES('room_name','在线匿名聊天室'),('open','1'),('password',NULL),"
-                               "('file_limit_mb','0'),('max_history','200'),('recall_time_limit','0')")
+            self._conn.execute('DELETE FROM messages WHERE room_id=?', (self.room_id,))
+            self._conn.execute('DELETE FROM profiles WHERE room_id=?', (self.room_id,))
+            self._conn.execute('DELETE FROM blacklist WHERE room_id=?', (self.room_id,))
+            self._conn.execute('DELETE FROM favorites WHERE room_id=?', (self.room_id,))
 
     def delete_message(self, message_id):
         with self._lock, self._conn:
-            return self._conn.execute('DELETE FROM messages WHERE id=?', (message_id,)).rowcount > 0
+            return self._conn.execute('DELETE FROM messages WHERE room_id=? AND id=?',
+                                      (self.room_id, message_id)).rowcount > 0
 
     def get_message_by_id(self, message_id):
-        rows = self._query('SELECT * FROM messages WHERE id=?', (message_id,))
+        rows = self._query('SELECT * FROM messages WHERE room_id=? AND id=?', (self.room_id, message_id))
         return dict(rows[0]) if rows else None
 
     def sp_get_message_stats(self):
-        total = self._query('SELECT COUNT(*) as cnt FROM messages')[0]['cnt']
-        user_stats = [dict(r) for r in self._query('SELECT * FROM v_message_stats ORDER BY message_count DESC')]
-        type_stats = [dict(r) for r in self._query('SELECT * FROM v_message_type_stats ORDER BY count DESC')]
+        total = self._query('SELECT COUNT(*) as cnt FROM messages WHERE room_id=?', (self.room_id,))[0]['cnt']
+        user_stats = [dict(r) for r in self._query(
+            'SELECT * FROM v_message_stats WHERE room_id=? ORDER BY message_count DESC', (self.room_id,))]
+        type_stats = [dict(r) for r in self._query(
+            'SELECT * FROM v_message_type_stats WHERE room_id=? ORDER BY count DESC', (self.room_id,))]
         for t in type_stats:
             t['percentage'] = round(t['count'] / total * 100, 1) if total else 0
         return {'total_messages': total, 'user_stats': user_stats, 'type_stats': type_stats}
 
     def sp_get_audit_log(self, limit=50):
-        return [dict(r) for r in self._query('SELECT * FROM message_audit ORDER BY audit_id DESC LIMIT ?', (limit,))]
+        return [dict(r) for r in self._query(
+            'SELECT * FROM message_audit WHERE room_id=? ORDER BY audit_id DESC LIMIT ?',
+            (self.room_id, limit))]
 
 
 # ==================== 广播层 ====================
@@ -380,24 +417,28 @@ class Broadcaster:
 
 # ==================== 业务层 ====================
 class ChatRoom:
-    def __init__(self, db, broadcaster, uploads_dir):
+    def __init__(self, db, broadcaster, uploads_dir, room_id, db_manager):
         self.db = db
         self.broadcaster = broadcaster
         self.uploads_dir = uploads_dir
+        self.room_id = room_id
+        self._db_manager = db_manager
         self.lock = threading.RLock()
         self.online_users = {}
-        state = db.get_room_state()
-        self.room_name = state['room_name']
-        self.room_password = state['password']
-        self.room_open = state['open']
-        self.file_limit_mb = state['file_limit_mb']
-        self.max_history = state['max_history']
-        self.recall_time_limit = state['recall_time_limit']
+        info = db_manager.get_room(room_id) or {}
+        self.room_name = info.get('room_name', '在线匿名聊天室')
+        self.room_password = info.get('password')
+        self.room_open = bool(info.get('is_open', 1))
+        self.file_limit_mb = info.get('file_limit_mb', 0) or 0
+        self.max_history = info.get('max_history', 200) or 200
+        self.recall_time_limit = info.get('recall_time_limit', 300) or 300
         self.db.max_history = self.max_history
 
     def _save_state(self):
-        self.db.save_room_state(self.room_name, self.room_password, self.room_open,
-                                self.file_limit_mb, self.max_history, self.recall_time_limit)
+        self._db_manager.update_room(self.room_id,
+            room_name=self.room_name, is_open=int(self.room_open),
+            password=self.room_password, file_limit_mb=self.file_limit_mb,
+            max_history=self.max_history, recall_time_limit=self.recall_time_limit)
 
     def _system_message(self, content):
         msg = {'id': f'{time.time()}_sys', 'type': 'system', 'content': content, 'sender': '系统', 'timestamp': time.time()}
@@ -642,21 +683,14 @@ class RoomManager:
         with self._lock:
             if room_id in self._rooms:
                 return self._rooms[room_id]
-            # 在锁内创建，避免竞态
             room_info = db_manager.get_room(room_id)
             if not room_info: return None
             db_path = room_db_path(room_id)
             uploads_dir = room_uploads_dir(room_id)
             os.makedirs(uploads_dir, exist_ok=True)
-            _db = Database(db_path)
+            _db = Database(db_path, room_id)
             _broadcaster = Broadcaster()
-            _room = ChatRoom(_db, _broadcaster, uploads_dir)
-            # 用 rooms 表的设置覆盖 room_state
-            _room.room_open = bool(room_info['is_open'])
-            _room.room_password = room_info['password']
-            _room.file_limit_mb = room_info['file_limit_mb']
-            _room.max_history = room_info['max_history']
-            _room.recall_time_limit = room_info['recall_time_limit']
+            _room = ChatRoom(_db, _broadcaster, uploads_dir, room_id, db_manager)
             self._rooms[room_id] = _room
             return _room
 
@@ -904,37 +938,31 @@ def api_favorites_remove():
 def api_admin_set_room_name():
     data = request.get_json(silent=True) or {}
     result, status = g.room.set_room_name(data.get('user_id'), data.get('name'))
-    if status == 200: db_manager.update_room(g.room_id, room_name=g.room.room_name)
     return jsonify(result), status
 
 @room_bp.route('/api/admin/set_room_open', methods=['POST'])
 def api_admin_set_room_open():
     data = request.get_json(silent=True) or {}
     result, status = g.room.set_room_open(data.get('user_id'), data.get('open', True))
-    if status == 200: db_manager.update_room(g.room_id, is_open=int(g.room.room_open))
     return jsonify(result), status
 
 @room_bp.route('/api/admin/set_password', methods=['POST'])
 def api_admin_set_password():
     data = request.get_json(silent=True) or {}
     result, status = g.room.set_password(data.get('user_id'), data.get('password', ''))
-    if status == 200: db_manager.update_room(g.room_id, password=g.room.room_password)
     return jsonify(result), status
 
 @room_bp.route('/api/admin/set_file_limit', methods=['POST'])
 def api_admin_set_file_limit():
     data = request.get_json(silent=True) or {}
     result, status = g.room.set_file_limit(data.get('user_id'), data.get('limit_mb'))
-    if status == 200:
-        _sync_upload_cap(g.room)
-        db_manager.update_room(g.room_id, file_limit_mb=g.room.file_limit_mb)
+    if status == 200: _sync_upload_cap(g.room)
     return jsonify(result), status
 
 @room_bp.route('/api/admin/set_max_history', methods=['POST'])
 def api_admin_set_max_history():
     data = request.get_json(silent=True) or {}
     result, status = g.room.set_max_history(data.get('user_id'), data.get('max_history'))
-    if status == 200: db_manager.update_room(g.room_id, max_history=g.room.max_history)
     return jsonify(result), status
 
 @room_bp.route('/api/admin/clear_history', methods=['POST'])
@@ -947,10 +975,6 @@ def api_admin_clear_history():
 def api_admin_factory_reset():
     data = request.get_json(silent=True) or {}
     result, status = g.room.factory_reset(data.get('user_id'))
-    if status == 200:
-        db_manager.update_room(g.room_id, room_name=g.room.room_name, is_open=int(g.room.room_open),
-                               password=g.room.room_password, file_limit_mb=g.room.file_limit_mb,
-                               max_history=g.room.max_history, recall_time_limit=g.room.recall_time_limit)
     return jsonify(result), status
 
 @room_bp.route('/api/admin/delete_message', methods=['POST'])
@@ -1009,7 +1033,6 @@ def api_admin_remove_blacklist():
 def api_admin_set_recall_time_limit():
     data = request.get_json(silent=True) or {}
     result, status = g.room.set_recall_time_limit(data.get('user_id'), data.get('limit'))
-    if status == 200: db_manager.update_room(g.room_id, recall_time_limit=g.room.recall_time_limit)
     return jsonify(result), status
 
 @room_bp.route('/api/admin/message_stats')
