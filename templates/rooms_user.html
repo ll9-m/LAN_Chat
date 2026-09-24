@@ -8,49 +8,172 @@
     - 右上角仅"退出"按钮
 -->
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>房间列表 - 在线匿名聊天室</title>
     <style>
         /* ===== 基础 ===== */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-               background: #f0f2f5; min-height: 100vh; padding: 20px; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
 
         /* ===== 顶部栏 ===== */
-        .header { max-width: 900px; margin: 0 auto 20px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 1.4rem; color: #333; }
+        .header {
+            max-width: 900px;
+            margin: 0 auto 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.4rem;
+            color: #333;
+        }
 
         /* ===== 通用按钮 ===== */
-        .btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem;
-               font-weight: 500; transition: opacity .15s; text-decoration: none; display: inline-block; }
-        .btn:hover { opacity: 0.85; }
-        .btn-primary { background: #12b7f5; color: white; }   /* 退出 */
-        .btn-success { background: #67c23a; color: white; }   /* 进入聊天 */
-        .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: opacity .15s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            opacity: 0.85;
+        }
+
+        .btn-primary {
+            background: #f43131;
+            color: rgb(239, 237, 237);
+        }
+
+        /* 退出 */
+        .btn-success {
+            background: #36b8f0;
+            color: white;
+        }
+
+        /* 进入聊天 */
+        .btn-sm {
+            padding: 5px 12px;
+            font-size: 0.8rem;
+        }
 
         /* ===== 房间卡片网格 ===== */
-        .room-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-        .room-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-        .room-card h3 { font-size: 1rem; margin-bottom: 8px; color: #333; }
-        .room-card .status { font-size: 0.8rem; margin-bottom: 12px; color: #666; }
-        .room-card .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-        .dot-green { background: #67c23a; }   /* 只展示开放房间，永远绿色 */
-        .dot-red { background: #f56c6c; }
-        .room-card .actions { display: flex; gap: 8px; align-items: center; }
-        .room-card .qr-thumb { width: 72px; height: 72px; border-radius: 6px; cursor: pointer; border: 1px solid #eee; }
+        .room-grid {
+            max-width: 900px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .room-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .room-card h3 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .room-card .status {
+            font-size: 0.8rem;
+            margin-bottom: 12px;
+            color: #666;
+        }
+
+        .room-card .status .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        .dot-green {
+            background: #67c23a;
+        }
+
+        /* 只展示开放房间，永远绿色 */
+        .dot-red {
+            background: #f56c6c;
+        }
+
+        .room-card .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .room-card .qr-thumb {
+            width: 72px;
+            height: 72px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid #eee;
+        }
 
         /* 空状态：无开放房间 */
-        .empty-msg { max-width: 900px; margin: 40px auto; text-align: center; color: #999; font-size: 0.95rem; }
+        .empty-msg {
+            max-width: 900px;
+            margin: 40px auto;
+            text-align: center;
+            color: #999;
+            font-size: 0.95rem;
+        }
 
         /* ===== 二维码大图预览 ===== */
-        .qr-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; cursor: zoom-out; }
-        .qr-modal.active { display: flex; }
-        .qr-modal img { max-width: 300px; max-height: 300px; border-radius: 8px; background: white; padding: 10px; }
+        .qr-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+
+        .qr-modal.active {
+            display: flex;
+        }
+
+        .qr-modal img {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 8px;
+            background: white;
+            padding: 10px;
+        }
     </style>
 </head>
+
 <body>
     <!-- 顶部：标题 + 退出 -->
     <div class="header">
@@ -111,4 +234,5 @@
         loadRooms();
     </script>
 </body>
+
 </html>

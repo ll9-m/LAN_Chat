@@ -12,60 +12,252 @@
   数据来源：GET /api/rooms/status；操作均 POST 对应管理 API。
 -->
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>房间管理 - 在线匿名聊天室</title>
     <style>
         /* ===== 基础 ===== */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; min-height: 100vh; padding: 20px; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
 
         /* ===== 顶部栏 ===== */
-        .header { max-width: 900px; margin: 0 auto 20px; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 1.4rem; color: #333; }
+        .header {
+            max-width: 900px;
+            margin: 0 auto 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.4rem;
+            color: #333;
+        }
 
         /* ===== 通用按钮 ===== */
-        .btn { padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: opacity .15s; text-decoration: none; display: inline-block; }
-        .btn:hover { opacity: 0.85; }
-        .btn-primary { background: #12b7f5; color: white; }   /* 主操作：新建 */
-        .btn-danger { background: #f56c6c; color: white; }    /* 危险操作：删除/重置 */
-        .btn-success { background: #67c23a; color: white; }   /* 进入聊天 */
-        .btn-warning { background: #e6a23c; color: white; }   /* 开关/改密码 */
-        .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: opacity .15s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            opacity: 0.85;
+        }
+
+        .btn-primary {
+            background: #12b7f5;
+            color: white;
+        }
+
+        /* 主操作：新建 */
+        .btn-danger {
+            background: #f56c6c;
+            color: white;
+        }
+
+        /* 危险操作：删除/重置 */
+        .btn-success {
+            background: #67c23a;
+            color: white;
+        }
+
+        /* 进入聊天 */
+        .btn-warning {
+            background: #e6a23c;
+            color: white;
+        }
+
+        /* 开关/改密码 */
+        .btn-sm {
+            padding: 5px 12px;
+            font-size: 0.8rem;
+        }
 
         /* ===== 房间卡片网格 ===== */
-        .room-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-        .room-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); transition: box-shadow .2s; }
-        .room-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
-        .room-card h3 { font-size: 1rem; margin-bottom: 8px; color: #333; }
-        .room-card .info { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
-        .room-card .status { font-size: 0.8rem; margin-bottom: 12px; }
-        .room-card .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-        .dot-green { background: #67c23a; }   /* 开放中 */
-        .dot-red { background: #f56c6c; }     /* 已关闭 */
-        .room-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-        .room-card .qr-thumb { width: 80px; height: 80px; border-radius: 6px; cursor: pointer; border: 1px solid #eee; margin-bottom: 10px; }
-        .room-card .qr-thumb:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .room-grid {
+            max-width: 900px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .room-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            transition: box-shadow .2s;
+        }
+
+        .room-card:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .room-card h3 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .room-card .info {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .room-card .status {
+            font-size: 0.8rem;
+            margin-bottom: 12px;
+        }
+
+        .room-card .status .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        .dot-green {
+            background: #67c23a;
+        }
+
+        /* 开放中 */
+        .dot-red {
+            background: #f56c6c;
+        }
+
+        /* 已关闭 */
+        .room-card .actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .room-card .qr-thumb {
+            width: 80px;
+            height: 80px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid #eee;
+            margin-bottom: 10px;
+        }
+
+        .room-card .qr-thumb:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
 
         /* 空状态提示 */
-        .empty-msg { max-width: 900px; margin: 40px auto; text-align: center; color: #999; font-size: 0.95rem; }
+        .empty-msg {
+            max-width: 900px;
+            margin: 40px auto;
+            text-align: center;
+            color: #999;
+            font-size: 0.95rem;
+        }
 
         /* ===== 模态框（新建/改密码/恢复出厂） ===== */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-overlay.active { display: flex; }
-        .modal { background: white; border-radius: 12px; padding: 24px; width: 360px; max-width: 90%; box-shadow: 0 8px 40px rgba(0,0,0,0.2); }
-        .modal h3 { font-size: 1.05rem; margin-bottom: 16px; }
-        .modal input { width: 100%; padding: 9px 12px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 0.9rem; margin-bottom: 12px; outline: none; }
-        .modal input:focus { border-color: #12b7f5; }
-        .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 360px;
+            max-width: 90%;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal h3 {
+            font-size: 1.05rem;
+            margin-bottom: 16px;
+        }
+
+        .modal input {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            outline: none;
+        }
+
+        .modal input:focus {
+            border-color: #12b7f5;
+        }
+
+        .modal .modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
 
         /* ===== 二维码大图预览（点击缩略图打开，点击空白关闭） ===== */
-        .qr-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; cursor: zoom-out; }
-        .qr-modal.active { display: flex; }
-        .qr-modal img { max-width: 300px; max-height: 300px; border-radius: 8px; background: white; padding: 10px; }
+        .qr-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+
+        .qr-modal.active {
+            display: flex;
+        }
+
+        .qr-modal img {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 8px;
+            background: white;
+            padding: 10px;
+        }
     </style>
 </head>
+
 <body>
     <!-- ===== 顶部操作栏 ===== -->
     <div class="header">
@@ -74,7 +266,7 @@
             <button class="btn btn-warning" id="chpw-btn">修改管理员密码</button>
             <button class="btn btn-danger" id="reset-btn">恢复出厂设置</button>
             <button class="btn btn-primary" id="create-btn">+ 新建房间</button>
-            <button class="btn" style="background:#f5f5f5;color:#666;" id="logout-btn">退出</button>
+            <button class="btn" style="background:#ed3838;color:#e6e3e3;" id="logout-btn">退出</button>
         </div>
     </div>
 
@@ -182,7 +374,7 @@
 
         // ===== 开关房间 =====
         function toggleRoom(roomId) {
-            fetch('/api/rooms/toggle', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: roomId}) })
+            fetch('/api/rooms/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_id: roomId }) })
                 .then(r => r.json()).then(() => loadRooms());
         }
 
@@ -190,7 +382,7 @@
         function deleteRoom(roomId) {
             const name = roomNames[roomId] || roomId;
             if (!confirm(`确定删除房间"${name}"？\n所有聊天记录和文件将被清除！`)) return;
-            fetch('/api/rooms/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: roomId}) })
+            fetch('/api/rooms/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_id: roomId }) })
                 .then(r => r.json()).then(() => loadRooms());
         }
 
@@ -208,7 +400,7 @@
         document.getElementById('create-confirm').addEventListener('click', () => {
             const name = document.getElementById('new-room-name').value.trim() || '新房间';
             const pw = document.getElementById('new-room-pw').value;
-            fetch('/api/rooms/create', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, password: pw || null}) })
+            fetch('/api/rooms/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, password: pw || null }) })
                 .then(r => r.json()).then(d => { if (d.success) { createModal.classList.remove('active'); loadRooms(); } else alert(d.error || '创建失败'); });
         });
 
@@ -229,8 +421,10 @@
             const newPw2 = document.getElementById('chpw-new2').value;
             if (!newPw) { alert('请输入新密码'); return; }
             if (newPw !== newPw2) { alert('两次输入的新密码不一致'); return; }
-            fetch('/api/admin/change_password', { method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({old_password: oldPw, new_password: newPw}) })
+            fetch('/api/admin/change_password', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+            })
                 .then(r => r.json()).then(d => {
                     if (d.success) { chpwModal.classList.remove('active'); alert('密码修改成功'); }
                     else alert(d.error || '修改失败');
@@ -250,8 +444,10 @@
             const pw = document.getElementById('reset-pw').value;
             if (!pw) { alert('请输入当前管理员密码'); return; }
             if (!confirm('确定恢复出厂设置？\n所有房间、聊天记录、文件将被永久删除！')) return;
-            fetch('/api/admin/global_reset', { method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({password: pw}) })
+            fetch('/api/admin/global_reset', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pw })
+            })
                 .then(r => r.json()).then(d => {
                     if (d.success) { resetModal.classList.remove('active'); alert('已恢复出厂设置'); loadRooms(); }
                     else alert(d.error || '重置失败');
@@ -267,4 +463,5 @@
         loadRooms();
     </script>
 </body>
+
 </html>
