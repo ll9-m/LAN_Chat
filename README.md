@@ -30,6 +30,16 @@
 - Python 3.10+
 - MySQL 8.0（本地或局域网内可达）
 
+### 一键脚本（Windows）
+
+双击 `一键配置环境和运行.bat`，脚本会依次：检查 Python → 安装依赖（已装好则跳过）→
+启动 MySQL80 服务 → 询问 MySQL 账号密码并测试连接 → 启动 `app.py`。
+
+- 账号密码直接回车即使用默认 `root` / `root`；连接失败可重输，最多 3 次。
+- 幂等可重复运行：环境已配好时不再安装、不再确认，直接启动项目。
+- 提前设置 `MYSQL_USER` / `MYSQL_PASSWORD` 等环境变量可跳过询问；启动的 `app.py` 会继承这些值。
+- 启动 MySQL 服务需要管理员权限，被拒绝时按提示手动启动服务后重新运行。
+
 ### 安装依赖
 
 ```bash
@@ -72,6 +82,8 @@ python app.py
 ```
 LAN_Chat/
 ├── app.py                    # 主程序（路由 / 数据库 / 业务逻辑 / SSE）
+├── requirements.txt          # Python 依赖清单
+├── 一键配置环境和运行.bat      # Windows 一键配置 + 启动（幂等）
 ├── sql/
 │   └── schema.sql            # 完整 MySQL DDL
 ├── README.md                 # 本文件
