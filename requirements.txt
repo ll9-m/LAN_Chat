@@ -1,0 +1,5 @@
+# LAN_Chat 运行依赖 —— 安装：pip install -r requirements.txt
+flask
+pymysql
+qrcode
+pillow
