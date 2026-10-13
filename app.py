@@ -578,8 +578,8 @@ class DatabaseManager:
 
     管辖的表：
       rooms   房间注册表（单一事实来源）：所有房间的名称、开关、密码、
-              文件限额、保留条数、撤回时限都存这里；ChatRoom 启动时读入
-              内存，setter 修改后经 update_room() 写回。
+              文件限额、保留条数、撤回时限都存这里；
+              ChatRoom 启动时读入内存，setter 修改后经 update_room() 写回。
       config  全局键值配置：目前存 admin_password（管理员登录密码）。
 
     线程安全：
@@ -3155,7 +3155,7 @@ if __name__ == '__main__':
         generate_qr(f'http://{ip}:{BASE_PORT}/room/room_default/',
                     os.path.join(QR_DIR, 'room_default.png'))
 
-    # 启动横幅：打印局域网访问地址（手机扫码/其他设备访问用）
+    
     print("========================================")
     print("  <<-- 在线匿名聊天室（多房间版）已启动-->>")
     print(f"  -->进入地址: http://{ip}:{BASE_PORT}/")
